@@ -39,12 +39,13 @@ export const WALLS: Rect[] = [
   { x: 680, y: 676, w: 40, h: 24 },
   // 형 방과 중앙 복도
   { x: 716, y: 676, w: 24, h: 324 },
-  // 내 방 윗벽: 왼쪽에 출입문
-  { x: 876, y: 626, w: 50, h: 24 }, { x: 1020, y: 626, w: 384, h: 24 },
+  // 내 방 윗벽: 가구와 겹치지 않는 넓은 출입문
+  { x: 876, y: 626, w: 44, h: 24 }, { x: 1040, y: 626, w: 364, h: 24 },
   { x: 876, y: 626, w: 24, h: 374 },
   // 중앙 아래 욕실
   { x: 716, y: 696, w: 42, h: 24 }, { x: 842, y: 696, w: 38, h: 24 },
-  { x: 716, y: 916, w: 164, h: 24 },
+  // 중앙 욕실 아래쪽은 평면도상 외부/설비 공간이라 통과할 수 없다.
+  { x: 716, y: 916, w: 164, h: 84 },
 ];
 
 export const DOORS = [
@@ -57,6 +58,21 @@ export const DOORS = [
   { x: 800, y: 708, angle: Math.PI / 2, label: '욕실 문' },
 ] as const;
 
+// 벽이 실제로 끊겨 있는 곳과 같은 좌표를 사용한다. 민트색 문턱은 모두 통과 가능하다.
+export const PASSAGES: Rect[] = [
+  { x: 190, y: 135, w: 24, h: 310, label: '거실 · 왼쪽 발코니', kind: 'passage' },
+  { x: 190, y: 730, w: 24, h: 190, label: '형 방 · 왼쪽 발코니', kind: 'passage' },
+  { x: 1380, y: 80, w: 24, h: 210, label: '인형방 · 오른쪽 발코니', kind: 'passage' },
+  { x: 1380, y: 445, w: 24, h: 155, label: '주방 · 오른쪽 발코니', kind: 'passage' },
+  { x: 1380, y: 705, w: 24, h: 205, label: '내 방 · 오른쪽 발코니', kind: 'passage' },
+  { x: 876, y: 195, w: 24, h: 120, label: '인형방 문', kind: 'passage' },
+  { x: 556, y: 594, w: 24, h: 60, label: '욕실 문', kind: 'passage' },
+  { x: 440, y: 676, w: 80, h: 24, label: '욕실 · 형 방', kind: 'passage' },
+  { x: 580, y: 676, w: 100, h: 24, label: '복도 · 형 방', kind: 'passage' },
+  { x: 920, y: 626, w: 120, h: 24, label: '내 방 문', kind: 'passage' },
+  { x: 758, y: 696, w: 84, h: 24, label: '중앙 욕실 문', kind: 'passage' },
+];
+
 export const FURNITURE: Rect[] = [
   // 거실
   { x: 285, y: 150, w: 270, h: 100, label: '소파', kind: 'sofa' },
@@ -64,32 +80,32 @@ export const FURNITURE: Rect[] = [
   { x: 430, y: 350, w: 120, h: 80, label: '테이블', kind: 'table' },
   { x: 230, y: 485, w: 65, h: 65, label: '화분', kind: 'plant' },
   // 현관
-  { x: 750, y: 70, w: 100, h: 55, label: '신발장', kind: 'cabinet' },
+  { x: 735, y: 55, w: 48, h: 105, label: '신발장', kind: 'cabinet' },
   // 현관 바로 옆 인형방: 평면도 표시대로 오른쪽은 침대, 왼쪽 아래는 책상
-  { x: 1210, y: 75, w: 145, h: 225, label: '인형방 침대', kind: 'bed' },
-  { x: 930, y: 245, w: 185, h: 70, label: '책상', kind: 'desk' },
+  { x: 1125, y: 75, w: 145, h: 225, label: '인형방 침대', kind: 'bed' },
+  { x: 950, y: 260, w: 160, h: 55, label: '책상', kind: 'desk' },
   { x: 930, y: 75, w: 210, h: 65, label: '인형 선반', kind: 'dollShelf' },
   // 주방/식당
   { x: 845, y: 405, w: 90, h: 120, label: '냉장고', kind: 'fridge' },
   { x: 1030, y: 390, w: 300, h: 72, label: '조리대', kind: 'counter' },
   { x: 1030, y: 462, w: 75, h: 110, label: '싱크대', kind: 'counter' },
-  { x: 1160, y: 505, w: 170, h: 90, label: '식탁', kind: 'dining' },
+  { x: 1130, y: 505, w: 160, h: 90, label: '식탁', kind: 'dining' },
   // 왼쪽 욕실
   { x: 225, y: 592, w: 62, h: 62, label: '변기', kind: 'toilet' },
   { x: 315, y: 592, w: 78, h: 58, label: '세면대', kind: 'sink' },
   // 왼쪽 아래 형 방: 빨간 표시 침대, 하늘색 표시 책상
-  { x: 250, y: 760, w: 190, h: 150, label: '형 침대', kind: 'bed' },
-  { x: 475, y: 715, w: 170, h: 75, label: '책상', kind: 'desk' },
+  { x: 300, y: 805, w: 175, h: 135, label: '형 침대', kind: 'bed' },
+  { x: 240, y: 715, w: 185, h: 70, label: '책상', kind: 'desk' },
   { x: 620, y: 845, w: 72, h: 105, label: '옷장', kind: 'closet' },
   // 오른쪽 아래 내 방: 평면도 표시대로 오른쪽 침대, 왼쪽 책상
-  { x: 1195, y: 700, w: 155, h: 205, label: '내 침대', kind: 'bed' },
-  { x: 930, y: 705, w: 170, h: 78, label: '책상', kind: 'desk' },
+  { x: 1160, y: 700, w: 145, h: 205, label: '내 침대', kind: 'bed' },
+  { x: 920, y: 780, w: 150, h: 70, label: '책상', kind: 'desk' },
   { x: 930, y: 850, w: 90, h: 100, label: '옷장', kind: 'closet' },
   // 중앙 욕실
   { x: 745, y: 815, w: 105, h: 76, label: '욕조', kind: 'tub' },
   // 발코니 소품
   { x: 58, y: 190, w: 70, h: 55, label: '화분대', kind: 'plant' },
-  { x: 1450, y: 470, w: 78, h: 65, label: '화분대', kind: 'plant' },
+  { x: 1500, y: 470, w: 48, h: 65, label: '화분대', kind: 'plant' },
 ];
 
 // 인형방에는 저작권 캐릭터가 아닌 오리지널 봉제인형을 많이 배치한다.
@@ -98,16 +114,16 @@ export const PLUSHIES = [
   { x: 1002, y: 116, color: '#ffd2d2', accent: '#e95f67', scale: .76, ears: 'bear' },
   { x: 1045, y: 115, color: '#f7dd7a', accent: '#d98a3d', scale: .84, ears: 'bear' },
   { x: 1092, y: 116, color: '#cfe4ff', accent: '#668bc7', scale: .72, ears: 'cat' },
-  { x: 1238, y: 125, color: '#fff7ed', accent: '#f28c83', scale: 1.02, ears: 'rabbit' },
-  { x: 1296, y: 145, color: '#d6edc5', accent: '#66a35d', scale: .9, ears: 'bear' },
-  { x: 1252, y: 212, color: '#e2d5f7', accent: '#866ab6', scale: .8, ears: 'cat' },
-  { x: 1315, y: 230, color: '#ffe0ad', accent: '#d77942', scale: .72, ears: 'bear' },
-  { x: 1162, y: 120, color: '#ffd9e7', accent: '#db6c96', scale: .66, ears: 'cat' },
-  { x: 1155, y: 190, color: '#d8f0ed', accent: '#4c9a91', scale: .82, ears: 'rabbit' },
-  { x: 1148, y: 278, color: '#fff2b6', accent: '#e5a83e', scale: .7, ears: 'bear' },
-  { x: 930, y: 195, color: '#f4d8c7', accent: '#a86e54', scale: .95, ears: 'bear' },
-  { x: 986, y: 205, color: '#f0e8ff', accent: '#8569b7', scale: .7, ears: 'rabbit' },
-  { x: 1060, y: 205, color: '#cde8f7', accent: '#4e91b6', scale: .86, ears: 'cat' },
+  { x: 1190, y: 125, color: '#fff7ed', accent: '#f28c83', scale: 1.02, ears: 'rabbit' },
+  { x: 1250, y: 145, color: '#d6edc5', accent: '#66a35d', scale: .9, ears: 'bear' },
+  { x: 1205, y: 212, color: '#e2d5f7', accent: '#866ab6', scale: .8, ears: 'cat' },
+  { x: 1245, y: 230, color: '#ffe0ad', accent: '#d77942', scale: .72, ears: 'bear' },
+  { x: 1175, y: 120, color: '#ffd9e7', accent: '#db6c96', scale: .66, ears: 'cat' },
+  { x: 1180, y: 190, color: '#d8f0ed', accent: '#4c9a91', scale: .82, ears: 'rabbit' },
+  { x: 1185, y: 270, color: '#fff2b6', accent: '#e5a83e', scale: .7, ears: 'bear' },
+  { x: 950, y: 116, color: '#f4d8c7', accent: '#a86e54', scale: .95, ears: 'bear' },
+  { x: 1010, y: 116, color: '#f0e8ff', accent: '#8569b7', scale: .7, ears: 'rabbit' },
+  { x: 1070, y: 116, color: '#cde8f7', accent: '#4e91b6', scale: .86, ears: 'cat' },
 ] as const;
 
 export const SOLIDS = [...WALLS, ...FURNITURE];
@@ -115,7 +131,7 @@ export const SOLIDS = [...WALLS, ...FURNITURE];
 export const LANDMARKS = {
   playerSpawn: { x: 610, y: 455 },
   momSpawn: { x: 800, y: 215 },
-  entrance: { x: 800, y: 55 },
+  entrance: { x: 800, y: 165 },
   tv: { x: 610, y: 250 },
   introAccident: { x: 650, y: 465 },
 } as const;
@@ -128,15 +144,30 @@ export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
   { id: 'ball', x: 650, y: 465, label: '거실에서 공 차기', effect: '쾅!', points: 300, rage: 10, cooldown: 6 },
   { id: 'sofa', x: 420, y: 285, label: '소파에서 점프하기', effect: '쿵! 쿵!', points: 250, rage: 8, cooldown: 8 },
   { id: 'crumbs', x: 1160, y: 605, label: '과자 부스러기 흘리기', effect: '사각사각!', points: 220, rage: 7, cooldown: 7 },
-  { id: 'hide-player', x: 1150, y: 850, label: '침대 옆에 숨기', effect: '쉿…', points: 0, rage: 0, cooldown: 9, hide: true },
-  { id: 'hide-brother', x: 465, y: 900, label: '형 옷장 뒤에 숨기', effect: '안 보이지?', points: 0, rage: 0, cooldown: 9, hide: true },
+  { id: 'hide-player', x: 1110, y: 850, label: '침대 옆에 숨기', effect: '쉿…', points: 0, rage: 0, cooldown: 9, hide: true },
+  { id: 'hide-brother', x: 560, y: 900, label: '형 옷장 뒤에 숨기', effect: '안 보이지?', points: 0, rage: 0, cooldown: 9, hide: true },
 ];
 
 export const NPC_SPOTS: Point[] = [
-  { x: 350, y: 340 }, { x: 755, y: 450 }, { x: 1000, y: 315 },
+  { x: 350, y: 340 }, { x: 755, y: 450 }, { x: 1080, y: 200 },
   { x: 980, y: 565 }, { x: 570, y: 920 }, { x: 1080, y: 890 },
   { x: 1480, y: 620 },
 ];
+
+// 자동 연결성 검사와 향후 맵 편집에 사용하는 각 공간의 안전한 보행 지점.
+export const ROOM_ANCHORS = [
+  { x: 350, y: 340, label: '거실' },
+  { x: 820, y: 150, label: '현관' },
+  { x: 1080, y: 200, label: '인형방' },
+  { x: 980, y: 565, label: '주방 · 식당' },
+  { x: 470, y: 620, label: '왼쪽 욕실' },
+  { x: 650, y: 620, label: '복도' },
+  { x: 570, y: 920, label: '형 방' },
+  { x: 800, y: 780, label: '중앙 욕실' },
+  { x: 1080, y: 890, label: '내 방' },
+  { x: 100, y: 400, label: '왼쪽 발코니' },
+  { x: 1480, y: 620, label: '오른쪽 발코니' },
+] as const;
 
 export const MISSIONS: Omit<Mission, 'progress' | 'done'>[] = [
   { kind: 'survive', title: '엄마에게 60초 동안 잡히지 않기', target: 60 },

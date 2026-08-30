@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Gamepad2, HelpCircle, UsersRound, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
 import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
@@ -10,7 +10,14 @@ import { drawCharacter, drawMap, drawMarker, drawSpeech, roundedRect } from '@/l
 import { SpriteBank } from '@/lib/game/sprites';
 import type { GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
 
-type GameCanvasProps = { onGameOver: (result: GameResult) => void };
+type GamePhase = 'explore' | 'chase';
+type GameCanvasProps = {
+  highScore: number;
+  initialPhase: GamePhase;
+  onGameOver: (result: GameResult) => void;
+  onOpenHow: () => void;
+  onOpenCharacters: () => void;
+};
 
 type Actor = Point & { r: number; moving: boolean };
 type Mom = Actor & {
@@ -46,13 +53,21 @@ function formatTime(value: number) {
   return `${min}:${sec}`;
 }
 
-export function GameCanvas({ onGameOver }: GameCanvasProps) {
+export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onOpenCharacters }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef({ left: false, right: false, up: false, down: false, dash: false, interact: false });
   const soundRef = useRef(true);
+  const phaseRef = useRef<GamePhase>(initialPhase);
   const [soundOn, setSoundOn] = useState(true);
+  const [phase, setPhase] = useState<GamePhase>(initialPhase);
   const [hud, setHud] = useState(INITIAL_HUD);
+
+  const beginChase = () => {
+    unlockGameAudio();
+    phaseRef.current = 'chase';
+    setPhase('chase');
+  };
 
   useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
 
@@ -68,14 +83,15 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     let pausedDuration = 0;
     let pausedRealAt = 0;
     const clock = () => performance.now() / 1000 - pausedDuration;
-    const start = clock();
+    const bootAt = clock();
+    let gameStartedAt: number | null = null;
     const player: Actor & { dashUntil: number; dashCooldownUntil: number; speedUntil: number; hiddenUntil: number } = {
       x: LANDMARKS.playerSpawn.x, y: LANDMARKS.playerSpawn.y, r: 19, moving: false, dashUntil: 0, dashCooldownUntil: 0, speedUntil: 0, hiddenUntil: 0,
     };
     const mom: Mom = {
       x: LANDMARKS.momSpawn.x, y: LANDMARKS.momSpawn.y, r: 23, moving: false, active: false, mood: 'calm', path: [], pathAt: 0,
-      chaseAt: start + 4.2, stunnedUntil: 0, distractedUntil: 0, extremeUntil: 0, lostUntil: 0,
-      lastSeen: { x: player.x, y: player.y }, nextLoseCheck: start + 10,
+      chaseAt: Infinity, stunnedUntil: 0, distractedUntil: 0, extremeUntil: 0, lostUntil: 0,
+      lastSeen: { x: player.x, y: player.y }, nextLoseCheck: Infinity,
     };
     const interactions: Interaction[] = INTERACTION_TEMPLATES.map((item) => ({ ...item, lastUsed: -999 }));
     const missionSeed = pick(MISSIONS);
@@ -84,10 +100,10 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     let score = 0;
     let accidents = 0;
     let rage = 0;
-    let nextBrother = start + 10;
-    let nextDad = start + 15;
-    let nextMomLine = start + 8;
-    let lastFrame = start;
+    let nextBrother = Infinity;
+    let nextDad = Infinity;
+    let nextMomLine = Infinity;
+    let lastFrame = bootAt;
     let lastHud = 0;
     let introDone = false;
     let running = true;
@@ -101,6 +117,8 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     let alertUntil = 0;
     let shakeUntil = 0;
     let shakePower = 0;
+    let blockedHintUntil = 0;
+    let nextBumpEffect = 0;
     let npc: Npc | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
@@ -123,8 +141,8 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     };
 
     const updateMission = (now: number) => {
-      if (mission.done) return;
-      const elapsed = now - start;
+      if (mission.done || gameStartedAt === null) return;
+      const elapsed = now - gameStartedAt;
       mission.progress = mission.kind === 'survive' ? Math.min(mission.target, Math.floor(elapsed)) : Math.min(mission.target, counters[mission.kind]);
       if (mission.progress >= mission.target) {
         mission.done = true; score += 1500; alertText = '미션 완료! +1,500'; alertUntil = now + 2.2;
@@ -139,6 +157,7 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     };
 
     const doInteraction = (now: number) => {
+      if (phaseRef.current !== 'chase') return;
       const available = interactions
         .filter((i) => distance(player, i) < 78 && !i.used && now - i.lastUsed >= i.cooldown)
         .sort((a, b) => distance(player, a) - distance(player, b))[0];
@@ -195,11 +214,11 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     };
 
     const endGame = (now: number) => {
-      if (!running) return;
+      if (!running || gameStartedAt === null) return;
       running = false; caughtAt = now; beep('caught'); alertText = '엄마에게 잡혔다!'; alertUntil = now + 2;
       if (!resultSent) {
         resultSent = true;
-        onGameOver({ score: Math.floor(score), elapsed: now - start, accidents, closeCalls: counters.closeCall, missionDone: mission.done });
+        onGameOver({ score: Math.floor(score), elapsed: now - gameStartedAt, accidents, closeCalls: counters.closeCall, missionDone: mission.done });
       }
     };
 
@@ -251,11 +270,29 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
     const frame = (stamp: number) => {
       const now = stamp / 1000 - pausedDuration;
       const dt = Math.min(.033, Math.max(0, now - lastFrame)); lastFrame = now;
-      const elapsed = now - start;
+
+      if (running && phaseRef.current === 'chase' && gameStartedAt === null) {
+        gameStartedAt = now;
+        mom.chaseAt = now + 4.2;
+        mom.nextLoseCheck = now + 10;
+        nextBrother = now + 10;
+        nextDad = now + 15;
+        nextMomLine = now + 8;
+        player.dashUntil = 0;
+        player.dashCooldownUntil = 0;
+        bubbles = [];
+        effects = [];
+        alertText = '게임 시작!';
+        alertUntil = now + 1.2;
+        addBubble('player', '좋아, 시작이다!', now, 1.8);
+        beep('nice');
+      }
+      const isChase = gameStartedAt !== null;
+      const elapsed = gameStartedAt === null ? 0 : now - gameStartedAt;
 
       if (running) {
-        if (!introDone && elapsed > 1.6) triggerIntro(now);
-        if (!mom.active && now >= mom.chaseAt) {
+        if (isChase && !introDone && elapsed > 1.6) triggerIntro(now);
+        if (isChase && !mom.active && now >= mom.chaseAt) {
           mom.active = true; mom.mood = 'chase'; alertText = '엄마가 온다!'; alertUntil = now + 2; shakeUntil = now + .8; shakePower = 14;
           addBubble('mom', '너 거기 안 서?!', now, 3); beep('alert');
         }
@@ -268,9 +305,16 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
         const length = Math.hypot(dx, dy) || 1; dx /= length; dy /= length;
         player.moving = Math.abs(dx) + Math.abs(dy) > 0 && player.hiddenUntil <= now;
         const speed = player.dashUntil > now ? 470 : (player.speedUntil > now ? 275 : 205);
-        if (player.hiddenUntil <= now) moveCircle(player, dx * speed * dt, dy * speed * dt, player.r);
+        if (player.hiddenUntil <= now) {
+          const movement = moveCircle(player, dx * speed * dt, dy * speed * dt, player.r);
+          if (player.moving && movement.blocked && !movement.moved && now >= nextBumpEffect) {
+            nextBumpEffect = now + .75;
+            blockedHintUntil = now + 1.25;
+            addEffect(player.x + dx * 25, player.y + dy * 25, '툭!', '#6d5142', now, .55);
+          }
+        }
 
-        if (mom.active) {
+        if (isChase && mom.active) {
           if (now > mom.nextLoseCheck) {
             mom.nextLoseCheck = now + 5 + Math.random() * 3;
             if (distance(player, mom) > 360 && rage < 76 && player.hiddenUntil <= now && Math.random() < .36) {
@@ -299,12 +343,14 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
           if (now > nextMomLine) { addBubble('mom', pick(LINES.mom), now); nextMomLine = now + 5 + Math.random() * 3; }
         }
 
-        if (!npc && now > nextBrother && Math.random() < .025) spawnBrother(now);
-        if (!npc && now > nextDad && Math.random() < .025) spawnDad(now);
-        if (npc && now > npc.until) npc = null;
-        if (npc?.kind === 'dad' && !npc.collected && distance(player, npc) < 80) grantDadItem(now);
-        score += dt * 10;
-        updateMission(now);
+        if (isChase) {
+          if (!npc && now > nextBrother && Math.random() < .025) spawnBrother(now);
+          if (!npc && now > nextDad && Math.random() < .025) spawnDad(now);
+          if (npc && now > npc.until) npc = null;
+          if (npc?.kind === 'dad' && !npc.collected && distance(player, npc) < 80) grantDadItem(now);
+          score += dt * 10;
+          updateMission(now);
+        }
         bubbles = bubbles.filter((bubble) => bubble.until > now);
         effects = effects.filter((effect) => effect.until > now);
       }
@@ -319,10 +365,12 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
       drawMap(ctx);
 
-      for (const interaction of interactions) {
-        if (interaction.used) continue;
-        const ready = now - interaction.lastUsed >= interaction.cooldown;
-        if (distance(player, interaction) < 150) drawMarker(ctx, interaction, interaction.label, ready, now);
+      if (isChase) {
+        for (const interaction of interactions) {
+          if (interaction.used) continue;
+          const ready = now - interaction.lastUsed >= interaction.cooldown;
+          if (distance(player, interaction) < 150) drawMarker(ctx, interaction, interaction.label, ready, now);
+        }
       }
       if (helpUntil > now && mom.active) {
         ctx.save(); ctx.strokeStyle = '#ffd945'; ctx.lineWidth = 7; ctx.setLineDash([14, 12]);
@@ -367,11 +415,15 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
 
       if (running && now - lastHud > .1) {
         lastHud = now;
-        const nearby = interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0];
+        const nearby = isChase ? interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0] : undefined;
         setHud({
           score: Math.floor(score), elapsed, rage, rageLabel: rageLabel(rage), momMood: mom.active ? mom.mood : 'calm',
           momMoodLabel: mom.active ? moodLabel(mom.mood) : '😐 아직 안 옴', mission: { ...mission },
-          prompt: nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'),
+          prompt: blockedHintUntil > now
+            ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
+            : isChase
+              ? (nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'))
+              : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
           itemText: itemTextUntil > now ? itemText : '', dashReady: clamp(1 - (player.dashCooldownUntil - now) / 1.35, 0, 1),
         });
       }
@@ -405,29 +457,60 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
 
   return (
     <div ref={stageRef} className="game-stage">
-      <canvas ref={canvasRef} aria-label="엄마가 온다 게임 화면" />
-      <header className="game-hud">
-        <section className="hud-rage">
-          <div className="hud-label"><span>엄마 분노도</span><strong>{Math.round(hud.rage)}%</strong></div>
-          <div className="rage-track"><span style={{ width: `${hud.rage}%` }} /></div>
-          <div className="rage-caption">{hud.rageLabel}</div>
-        </section>
-        <section className="hud-score" aria-label="점수와 시간">
-          <span>점수 <strong>{hud.score.toLocaleString()}</strong></span>
-          <span>생존 <strong>{formatTime(hud.elapsed)}</strong></span>
-        </section>
-        <Button className="sound-toggle" variant="secondary" size="icon" onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })} aria-label={soundOn ? '소리 끄기' : '소리 켜기'}>
-          {soundOn ? <Volume2 /> : <VolumeX />}
-        </Button>
-      </header>
-      <aside className="mission-card">
-        <span className="mission-badge">오늘의 미션</span>
-        <strong className={hud.mission.done ? 'mission-done' : ''}>{hud.mission.done ? '✓ ' : ''}{hud.mission.title}</strong>
-        <div className="mission-progress"><span style={{ width: `${(hud.mission.progress / hud.mission.target) * 100}%` }} /></div>
-        <small>{Math.floor(hud.mission.progress)} / {hud.mission.target}</small>
-      </aside>
-      <div className="mom-status">{hud.momMoodLabel}</div>
-      {hud.itemText && <div className="item-toast">{hud.itemText}</div>}
+      <canvas ref={canvasRef} aria-label="집 자유 탐험 및 엄마가 온다 게임 화면" />
+
+      {phase === 'explore' && (
+        <header className="explore-toolbar">
+          <div className="explore-title">
+            <span>자유 탐험 중</span>
+            <strong>엄마가 온다!</strong>
+            <small>게임 전에는 안전해요. 먼저 집 구조를 익혀보세요.</small>
+          </div>
+          <Button className="explore-start" onClick={beginChase}><Gamepad2 /> 게임 시작</Button>
+          <div className="explore-links">
+            <Button variant="secondary" onClick={onOpenHow}><HelpCircle /> 게임 방법</Button>
+            <Button variant="secondary" onClick={onOpenCharacters}><UsersRound /> 가족 소개</Button>
+            <Button className="sound-toggle" variant="secondary" size="icon" onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })} aria-label={soundOn ? '소리 끄기' : '소리 켜기'}>
+              {soundOn ? <Volume2 /> : <VolumeX />}
+            </Button>
+          </div>
+          <div className="explore-best">🏆 최고 기록 <strong>{highScore.toLocaleString()}점</strong></div>
+        </header>
+      )}
+
+      {phase === 'chase' && (
+        <>
+          <header className="game-hud">
+            <section className="hud-rage">
+              <div className="hud-label"><span>엄마 분노도</span><strong>{Math.round(hud.rage)}%</strong></div>
+              <div className="rage-track"><span style={{ width: `${hud.rage}%` }} /></div>
+              <div className="rage-caption">{hud.rageLabel}</div>
+            </section>
+            <section className="hud-score" aria-label="점수와 시간">
+              <span>점수 <strong>{hud.score.toLocaleString()}</strong></span>
+              <span>생존 <strong>{formatTime(hud.elapsed)}</strong></span>
+            </section>
+            <Button className="sound-toggle" variant="secondary" size="icon" onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })} aria-label={soundOn ? '소리 끄기' : '소리 켜기'}>
+              {soundOn ? <Volume2 /> : <VolumeX />}
+            </Button>
+          </header>
+          <aside className="mission-card">
+            <span className="mission-badge">오늘의 미션</span>
+            <strong className={hud.mission.done ? 'mission-done' : ''}>{hud.mission.done ? '✓ ' : ''}{hud.mission.title}</strong>
+            <div className="mission-progress"><span style={{ width: `${(hud.mission.progress / hud.mission.target) * 100}%` }} /></div>
+            <small>{Math.floor(hud.mission.progress)} / {hud.mission.target}</small>
+          </aside>
+          <div className="mom-status">{hud.momMoodLabel}</div>
+          {hud.itemText && <div className="item-toast">{hud.itemText}</div>}
+        </>
+      )}
+
+      {phase === 'explore' && (
+        <aside className="walkability-legend" aria-label="집 이동 규칙">
+          <span><i className="walkable-swatch" /> 방 바닥·민트 문턱: 통과 가능</span>
+          <span><i className="blocked-swatch" /> 갈색 벽·점선 가구: 통과 불가</span>
+        </aside>
+      )}
       <div className="interaction-prompt">{hud.prompt}</div>
       <div className="dash-meter" aria-label="대시 충전"><span style={{ transform: `scaleX(${hud.dashReady})` }} /></div>
 
@@ -440,7 +523,7 @@ export function GameCanvas({ onGameOver }: GameCanvasProps) {
         </div>
         <div className="action-buttons">
           <button className="touch-dash" onPointerDown={press('dash')}>DASH<small>대시</small></button>
-          <button className="touch-e" onPointerDown={press('interact')}>E<small>장난</small></button>
+          {phase === 'chase' && <button className="touch-e" onPointerDown={press('interact')}>E<small>장난</small></button>}
         </div>
       </div>
     </div>

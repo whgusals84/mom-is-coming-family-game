@@ -22,12 +22,19 @@ export function isBlocked(x: number, y: number, radius: number) {
 
 export function moveCircle(entity: Point, dx: number, dy: number, radius: number) {
   const nextX = entity.x + dx;
-  if (!isBlocked(nextX, entity.y, radius)) entity.x = nextX;
+  const blockedX = dx !== 0 && isBlocked(nextX, entity.y, radius);
+  if (!blockedX) entity.x = nextX;
   const nextY = entity.y + dy;
-  if (!isBlocked(entity.x, nextY, radius)) entity.y = nextY;
+  const blockedY = dy !== 0 && isBlocked(entity.x, nextY, radius);
+  if (!blockedY) entity.y = nextY;
+  return {
+    moved: (dx !== 0 && !blockedX) || (dy !== 0 && !blockedY),
+    blocked: blockedX || blockedY,
+  };
 }
 
-const CELL = 50;
+// 좁은 문에서도 엄마의 원형 충돌 범위를 정확히 반영하도록 세밀한 격자를 쓴다.
+const CELL = 25;
 const COLS = Math.ceil(WORLD.width / CELL);
 const ROWS = Math.ceil(WORLD.height / CELL);
 
@@ -36,7 +43,7 @@ function center(x: number, y: number): Point { return { x: x * CELL + CELL / 2, 
 
 function nearestOpen(cellX: number, cellY: number, radius: number) {
   if (!isBlocked(center(cellX, cellY).x, center(cellX, cellY).y, radius)) return { x: cellX, y: cellY };
-  for (let ring = 1; ring <= 4; ring += 1) {
+  for (let ring = 1; ring <= 8; ring += 1) {
     for (let oy = -ring; oy <= ring; oy += 1) {
       for (let ox = -ring; ox <= ring; ox += 1) {
         const x = clamp(cellX + ox, 0, COLS - 1);
@@ -96,7 +103,7 @@ export function findPath(from: Point, to: Point, radius = 24): Point[] {
       }
     }
   }
-  return [{ ...to }];
+  return [];
 }
 
 export function pointInView(point: Point, camera: Point, width: number, height: number, margin = 100) {

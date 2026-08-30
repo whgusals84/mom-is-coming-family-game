@@ -1,4 +1,4 @@
-import { DOORS, FURNITURE, LANDMARKS, PLUSHIES, ROOMS, WALLS } from './data';
+import { DOORS, FURNITURE, LANDMARKS, PASSAGES, PLUSHIES, ROOMS, WALLS } from './data';
 import type { CharacterRole, MomMood, Point } from './types';
 import { SpriteBank } from './sprites';
 
@@ -31,6 +31,8 @@ export function drawMap(ctx: CanvasRenderingContext2D) {
     ctx.fillText(room.label ?? '', room.x + 32, room.y + 52);
   }
 
+  for (const passage of PASSAGES) drawPassage(ctx, passage);
+
   for (const wall of WALLS) {
     ctx.fillStyle = '#6d5142';
     ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
@@ -39,7 +41,7 @@ export function drawMap(ctx: CanvasRenderingContext2D) {
   }
 
   for (const item of FURNITURE) drawFurniture(ctx, item);
-  for (const door of DOORS) drawDoor(ctx, door.x, door.y, door.angle);
+  for (const door of DOORS) drawDoor(ctx, door.x, door.y, door.angle, door.label !== '현관문');
   for (const plush of PLUSHIES) drawPlush(ctx, plush);
   drawDoorMat(ctx, LANDMARKS.entrance.x, LANDMARKS.entrance.y + 28);
 }
@@ -86,13 +88,29 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: (typeof FURNITURE)[n
     roundedRect(ctx, item.x + 9, item.y + 9, item.w - 18, item.h - 18, 22); ctx.fillStyle = '#f8ffff'; ctx.fill();
   }
   ctx.fillStyle = 'rgba(49,37,31,.75)'; ctx.font = '800 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(item.label ?? '', item.x + item.w / 2, item.y + item.h / 2 + 5);
+  // 이 점선 사각형이 실제 충돌 판정과 완전히 같은 가구의 바닥 면적이다.
+  ctx.setLineDash([7, 5]); ctx.strokeStyle = 'rgba(57,43,36,.72)'; ctx.lineWidth = 2.5;
+  ctx.strokeRect(item.x + 1.5, item.y + 1.5, item.w - 3, item.h - 3);
   ctx.restore();
 }
 
-function drawDoor(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.strokeStyle = '#8a624a'; ctx.lineWidth = 4;
+function drawPassage(ctx: CanvasRenderingContext2D, passage: (typeof PASSAGES)[number]) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(91, 201, 178, .4)';
+  ctx.fillRect(passage.x, passage.y, passage.w, passage.h);
+  ctx.strokeStyle = '#2f8e7c'; ctx.lineWidth = 3; ctx.setLineDash([8, 7]);
+  ctx.strokeRect(passage.x + 1.5, passage.y + 1.5, Math.max(0, passage.w - 3), Math.max(0, passage.h - 3));
+  ctx.restore();
+}
+
+function drawDoor(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, passable: boolean) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.strokeStyle = passable ? '#2f8e7c' : '#8a4f43'; ctx.lineWidth = 4;
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(58, 0); ctx.stroke();
   ctx.setLineDash([5, 5]); ctx.globalAlpha = .45; ctx.beginPath(); ctx.arc(0, 0, 58, 0, Math.PI / 2); ctx.stroke();
+  if (!passable) {
+    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.fillStyle = '#fff0b0'; ctx.font = '900 15px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('잠김', 28, 18);
+  }
   ctx.restore();
 }
 

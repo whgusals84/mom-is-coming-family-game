@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Gamepad2, HelpCircle, Sparkles, UsersRound } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { unlockGameAudio } from '@/lib/game/audio';
 import type { GameResult } from '@/lib/game/types';
 import { GameCanvas } from './game-canvas';
 
-type Screen = 'home' | 'how' | 'characters' | 'playing' | 'gameover';
+type Screen = 'game' | 'how' | 'characters' | 'gameover';
 
 function formatTime(value: number) {
   return `${Math.floor(value / 60).toString().padStart(2, '0')}:${Math.floor(value % 60).toString().padStart(2, '0')}`;
@@ -16,8 +16,9 @@ function formatTime(value: number) {
 const EMPTY_RESULT: GameResult = { score: 0, elapsed: 0, accidents: 0, closeCalls: 0, missionDone: false };
 
 export function GameApp() {
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>('game');
   const [run, setRun] = useState(0);
+  const [startImmediately, setStartImmediately] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [result, setResult] = useState<GameResult>(EMPTY_RESULT);
 
@@ -31,10 +32,11 @@ export function GameApp() {
     }
   }, []);
 
-  const startGame = () => {
-    unlockGameAudio();
+  const showGame = (chaseImmediately: boolean) => {
+    if (chaseImmediately) unlockGameAudio();
     setRun((value) => value + 1);
-    setScreen('playing');
+    setStartImmediately(chaseImmediately);
+    setScreen('game');
   };
   const handleGameOver = useCallback((gameResult: GameResult) => {
     setResult(gameResult);
@@ -46,7 +48,18 @@ export function GameApp() {
     setTimeout(() => setScreen('gameover'), 520);
   }, []);
 
-  if (screen === 'playing') return <GameCanvas key={run} onGameOver={handleGameOver} />;
+  if (screen === 'game') {
+    return (
+      <GameCanvas
+        key={run}
+        highScore={highScore}
+        initialPhase={startImmediately ? 'chase' : 'explore'}
+        onGameOver={handleGameOver}
+        onOpenHow={() => setScreen('how')}
+        onOpenCharacters={() => setScreen('characters')}
+      />
+    );
+  }
 
   return (
     <main className="menu-shell">
@@ -55,33 +68,9 @@ export function GameApp() {
         <span className="comic-word word-one">후다닥!</span><span className="comic-word word-two">?!</span>
       </div>
 
-      {screen === 'home' && (
-        <section className="home-panel">
-          <div className="title-copy">
-            <div className="eyebrow"><Sparkles size={17} /> 우당탕탕 가족 추격전</div>
-            <h1>엄마가<br /><em>온다!</em></h1>
-            <p>사고는 크게, 도망은 빠르게.<br />잡히기 전까지 집 안을 누벼 보세요!</p>
-          </div>
-          <div className="hero-chase" aria-hidden="true">
-            <div className="hero-mom"><span className="hero-alert">거기 서!</span><img src="/assets/characters/mom/idle.png" alt="" /></div>
-            <span className="speed-lines">〽〽〽</span>
-            <div className="hero-player"><img src="/assets/characters/player/idle.png" alt="" /></div>
-          </div>
-          <div className="menu-actions">
-            <Button className="primary-cta" onClick={startGame}><Gamepad2 /> 게임 시작</Button>
-            <div className="secondary-actions">
-              <Button variant="secondary" onClick={() => setScreen('how')}><HelpCircle /> 게임 방법</Button>
-              <Button variant="secondary" onClick={() => setScreen('characters')}><UsersRound /> 캐릭터 소개</Button>
-            </div>
-            <div className="best-score">🏆 최고 기록 <strong>{highScore.toLocaleString()}점</strong></div>
-          </div>
-          <div className="keyboard-hint"><kbd>WASD</kbd> / 방향키 이동 <kbd>Space</kbd> 대시 <kbd>E</kbd> 장난</div>
-        </section>
-      )}
-
       {screen === 'how' && (
         <section className="info-panel">
-          <Button className="back-button" variant="ghost" onClick={() => setScreen('home')}><ArrowLeft /> 돌아가기</Button>
+          <Button className="back-button" variant="ghost" onClick={() => showGame(false)}><ArrowLeft /> 집으로 돌아가기</Button>
           <div className="info-heading"><span>게임 방법</span><h2>사고 치고, 튀어!</h2><p>위험한 장난일수록 점수도 크지만 엄마의 분노도 빨리 올라갑니다.</p></div>
           <div className="how-grid">
             <article><b>01</b><span className="how-icon">🏃</span><h3>집 안을 달려요</h3><p>WASD 또는 방향키로 가구 사이를 누비세요. 모바일은 화면 버튼으로 움직여요.</p></article>
@@ -89,13 +78,13 @@ export function GameApp() {
             <article><b>03</b><span className="how-icon">⚡</span><h3>Space로 대시!</h3><p>엄마 바로 앞에서 대시로 빠져나오면 NICE 보너스를 받아요.</p></article>
             <article><b>04</b><span className="how-icon">🎁</span><h3>가족을 만나요</h3><p>아빠는 아이템을 주고, 형은 도와줄 때도 배신할 때도 있어요.</p></article>
           </div>
-          <Button className="primary-cta compact" onClick={startGame}>바로 시작!</Button>
+          <Button className="primary-cta compact" onClick={() => showGame(true)}>바로 시작!</Button>
         </section>
       )}
 
       {screen === 'characters' && (
         <section className="info-panel character-panel">
-          <Button className="back-button" variant="ghost" onClick={() => setScreen('home')}><ArrowLeft /> 돌아가기</Button>
+          <Button className="back-button" variant="ghost" onClick={() => showGame(false)}><ArrowLeft /> 집으로 돌아가기</Button>
           <div className="info-heading"><span>우리 가족</span><h2>누가 내 편일까?</h2></div>
           <div className="character-grid">
             <article className="character-card mom-card"><div className="character-portrait"><img src="/assets/characters/mom/idle.png" alt="긴 머리의 엄마 캐릭터" /></div><div><span>추격자</span><h3>엄마</h3><p>“오늘도 사고 치는 아들들을 잡으러 간다.”</p></div></article>
@@ -103,7 +92,7 @@ export function GameApp() {
             <article className="character-card player-card"><div className="character-portrait"><img src="/assets/characters/player/idle.png" alt="플레이어 캐릭터" /></div><div><span>플레이어</span><h3>나</h3><p>“오늘도 살아남아야 한다.”</p></div></article>
             <article className="character-card dad-card"><div className="character-portrait"><img src="/assets/characters/dad/idle.png" alt="안경을 쓰고 선물 주머니를 든 아빠 캐릭터" /></div><div><span>지원 NPC</span><h3>아빠</h3><p>“난 아무것도 못 봤다.”</p></div></article>
           </div>
-          <Button className="primary-cta compact" onClick={startGame}>가족 만나러 가기</Button>
+          <Button className="primary-cta compact" onClick={() => showGame(true)}>가족 만나러 가기</Button>
         </section>
       )}
 
@@ -119,8 +108,8 @@ export function GameApp() {
             <div><span>최고 기록</span><strong>{highScore.toLocaleString()}점</strong></div>
           </div>
           <div className="result-tags"><span>NICE {result.closeCalls}회</span><span>{result.missionDone ? '미션 성공 ✓' : '미션 다음 기회!'}</span></div>
-          <Button className="primary-cta" onClick={startGame}>다시 하기</Button>
-          <Button variant="ghost" onClick={() => setScreen('home')}>시작 화면으로</Button>
+          <Button className="primary-cta" onClick={() => showGame(true)}>다시 하기</Button>
+          <Button variant="ghost" onClick={() => showGame(false)}>집을 다시 둘러보기</Button>
         </section>
       )}
     </main>
