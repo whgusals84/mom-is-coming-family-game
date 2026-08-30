@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { unlockGameAudio } from '@/lib/game/audio';
@@ -21,6 +21,7 @@ export function GameApp() {
   const [startImmediately, setStartImmediately] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [result, setResult] = useState<GameResult>(EMPTY_RESULT);
+  const gameOverTitleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     try {
@@ -31,6 +32,10 @@ export function GameApp() {
       void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    if (screen === 'gameover') gameOverTitleRef.current?.focus();
+  }, [screen]);
 
   const showGame = (chaseImmediately: boolean) => {
     if (chaseImmediately) unlockGameAudio();
@@ -71,12 +76,12 @@ export function GameApp() {
       {screen === 'how' && (
         <section className="info-panel">
           <Button className="back-button" variant="ghost" onClick={() => showGame(false)}><ArrowLeft /> 집으로 돌아가기</Button>
-          <div className="info-heading"><span>게임 방법</span><h2>사고 치고, 튀어!</h2><p>위험한 장난일수록 점수도 크지만 엄마의 분노도 빨리 올라갑니다.</p></div>
+          <div className="info-heading"><span>게임 방법</span><h2>사고 치고, 튀어!</h2><p>체력은 100! 엄마에게 닿으면 35가 줄고, 거리를 오래 벌리거나 세면대·아빠 아이템으로 회복할 수 있어요.</p></div>
           <div className="how-grid">
             <article><b>01</b><span className="how-icon">🏃</span><h3>집 안을 달려요</h3><p>WASD 또는 방향키로 가구 사이를 누비세요. 모바일은 화면 버튼으로 움직여요.</p></article>
             <article><b>02</b><span className="how-icon">💥</span><h3>E로 장난쳐요</h3><p>반짝이는 장소 근처에서 E를 누르면 점수와 분노도가 함께 올라갑니다.</p></article>
             <article><b>03</b><span className="how-icon">⚡</span><h3>Space로 대시!</h3><p>엄마 바로 앞에서 대시로 빠져나오면 NICE 보너스를 받아요.</p></article>
-            <article><b>04</b><span className="how-icon">🎁</span><h3>가족을 만나요</h3><p>아빠는 아이템을 주고, 형은 도와줄 때도 배신할 때도 있어요.</p></article>
+            <article><b>04</b><span className="how-icon">💚</span><h3>체력을 회복해요</h3><p>엄마와 거리를 8초 유지하면 자동 회복! 세면대의 물과 아빠표 비타민 주스도 찾아보세요.</p></article>
           </div>
           <Button className="primary-cta compact" onClick={() => showGame(true)}>바로 시작!</Button>
         </section>
@@ -97,10 +102,10 @@ export function GameApp() {
       )}
 
       {screen === 'gameover' && (
-        <section className="gameover-panel">
-          <div className="caught-stamp">결국!</div>
-          <h2>엄마에게 잡혔다!</h2>
-          <p>“자, 이제 누가 치울 건지 얘기해 볼까?”</p>
+        <section className="gameover-panel" aria-labelledby="gameover-title">
+          <div className="caught-stamp">체력 0!</div>
+          <h2 id="gameover-title" ref={gameOverTitleRef} tabIndex={-1}>결국 엄마에게 잡혔다!</h2>
+          <p>체력을 모두 써버렸다. 잠깐 쉬고 다시 도전!</p>
           <div className="result-grid">
             <div><span>생존시간</span><strong>{formatTime(result.elapsed)}</strong></div>
             <div><span>사고친 횟수</span><strong>{result.accidents}회</strong></div>

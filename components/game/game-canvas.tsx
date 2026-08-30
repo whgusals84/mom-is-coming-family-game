@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
 import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
+import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
 import { clamp, distance, findPath, moveCircle } from '@/lib/game/map';
 import { drawCharacter, drawMap, drawMarker, drawSpeech, roundedRect } from '@/lib/game/renderer';
 import { SpriteBank } from '@/lib/game/sprites';
@@ -44,6 +45,7 @@ const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
   mission: { kind: 'survive', title: '엄마에게 60초 동안 잡히지 않기', target: 60, progress: 0, done: false },
   prompt: '집 안을 둘러보는 중…', itemText: '', dashReady: 1,
+  health: HEALTH_RULES.max, maxHealth: HEALTH_RULES.max, recoveryLabel: '체력 가득', recovering: false,
 };
 
 function pick<T>(values: readonly T[]): T { return values[Math.floor(Math.random() * values.length)]; }
@@ -100,8 +102,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     const clock = () => performance.now() / 1000 - pausedDuration;
     const bootAt = clock();
     let gameStartedAt: number | null = null;
-    const player: Actor & { dashUntil: number; dashCooldownUntil: number; speedUntil: number; hiddenUntil: number } = {
-      x: LANDMARKS.playerSpawn.x, y: LANDMARKS.playerSpawn.y, r: 19, moving: false, facing: 1, dashUntil: 0, dashCooldownUntil: 0, speedUntil: 0, hiddenUntil: 0,
+    const player: Actor & { dashUntil: number; dashCooldownUntil: number; speedUntil: number; hiddenUntil: number; invulnerableUntil: number } = {
+      x: LANDMARKS.playerSpawn.x, y: LANDMARKS.playerSpawn.y, r: 19, moving: false, facing: 1, dashUntil: 0, dashCooldownUntil: 0, speedUntil: 0, hiddenUntil: 0, invulnerableUntil: 0,
     };
     const mom: Mom = {
       x: LANDMARKS.momSpawn.x, y: LANDMARKS.momSpawn.y, r: 23, moving: false, facing: -1, active: false, mood: 'calm', path: [], pathAt: 0,
@@ -115,6 +117,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let score = 0;
     let accidents = 0;
     let rage = 0;
+    let health: number = HEALTH_RULES.max;
+    let safeSince: number | null = null;
+    let passiveRecoveryActive = false;
     let nextBrother = Infinity;
     let nextDad = Infinity;
     let nextMomLine = Infinity;
@@ -177,6 +182,18 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         .filter((i) => distance(player, i) < 78 && !i.used && now - i.lastUsed >= i.cooldown)
         .sort((a, b) => distance(player, a) - distance(player, b))[0];
       if (!available) return;
+      if (available.heal) {
+        if (health >= HEALTH_RULES.max) {
+          itemText = '💚 체력이 이미 가득해요!'; itemTextUntil = now + 2.2; return;
+        }
+        available.lastUsed = now;
+        const before = health;
+        health = restoreHealth(health, available.heal);
+        const healed = Math.ceil(health - before);
+        itemText = `💧 물 마시고 체력 +${healed}`; itemTextUntil = now + 3;
+        addEffect(available.x, available.y, available.effect, '#36a878', now, 1.4);
+        addBubble('player', '살 것 같다!', now); beep('item'); return;
+      }
       available.lastUsed = now;
       if (available.oneShot) available.used = true;
       if (available.hide) {
@@ -219,9 +236,18 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     const grantDadItem = (now: number) => {
       if (!npc || npc.kind !== 'dad' || npc.collected) return;
       npc.collected = true; counters.dad += 1; score += 150;
-      const item = pick(ITEMS); itemText = `${item.icon} ${item.name} — ${item.text}`; itemTextUntil = now + 4;
+      const juice = ITEMS.find((item) => item.id === 'juice')!;
+      const regularItems = ITEMS.filter((item) => item.id !== 'juice');
+      const item = HEALTH_RULES.max - health >= 1 && Math.random() < .45 ? juice : pick(regularItems);
+      itemText = `${item.icon} ${item.name} — ${item.text}`; itemTextUntil = now + 4;
       if (item.id === 'shoes') player.speedUntil = now + 5;
       if (item.id === 'snack') score += 500;
+      if (item.id === 'juice') {
+        const before = health;
+        health = restoreHealth(health, HEALTH_RULES.dadHeal);
+        const healed = Math.ceil(health - before);
+        itemText = `🧃 아빠표 비타민 주스 — 체력 +${healed}`;
+      }
       if (item.id === 'lock') mom.stunnedUntil = Math.max(mom.stunnedUntil, now + 2.2);
       if (item.id === 'remote') { mom.distractedUntil = now + 4.2; mom.pathAt = 0; }
       if (item.id === 'dadChance') mom.stunnedUntil = Math.max(mom.stunnedUntil, now + 3);
@@ -235,6 +261,32 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         resultSent = true;
         onGameOver({ score: Math.floor(score), elapsed: now - gameStartedAt, accidents, closeCalls: counters.closeCall, missionDone: mission.done });
       }
+    };
+
+    const hitPlayer = (now: number) => {
+      if (!running || gameStartedAt === null || player.invulnerableUntil > now) return;
+      health = takeDamage(health);
+      safeSince = null; passiveRecoveryActive = false; nearMom = false;
+      setHud((current) => ({ ...current, health: Math.floor(health), recoveryLabel: health > 0 ? '엄마와 거리를 벌리면 회복' : '체력 소진', recovering: false }));
+      if (health <= 0) { endGame(now); return; }
+
+      player.invulnerableUntil = now + HEALTH_RULES.invulnerabilitySeconds;
+      player.speedUntil = Math.max(player.speedUntil, now + 1.1);
+      mom.stunnedUntil = Math.max(mom.stunnedUntil, now + HEALTH_RULES.momStunSeconds);
+      mom.path = []; mom.pathAt = now + .25;
+      let vx = player.x - mom.x;
+      let vy = player.y - mom.y;
+      let length = Math.hypot(vx, vy);
+      if (length < .001) { vx = player.facing; vy = 0; length = 1; }
+      const step = 8;
+      for (let moved = 0; moved < HEALTH_RULES.knockbackDistance; moved += step) {
+        moveCircle(player, vx / length * step, vy / length * step, player.r);
+      }
+      alertText = `앗! 체력 ${Math.floor(health)}/${HEALTH_RULES.max}`; alertUntil = now + 1.5;
+      itemText = `💔 체력 -${HEALTH_RULES.hitDamage} · 남은 체력 ${Math.floor(health)}/${HEALTH_RULES.max} · 잠깐 무적!`; itemTextUntil = now + 3;
+      shakeUntil = now + .42; shakePower = 9;
+      addEffect(player.x, player.y, `-${HEALTH_RULES.hitDamage}`, '#ef5b5b', now, 1.2);
+      addBubble('player', '아직 안 끝났어!', now); beep('hurt');
     };
 
     const resizeCanvas = () => {
@@ -360,11 +412,31 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           const gap = distance(player, mom);
           if (gap < 96) nearMom = true;
           if (nearMom && gap > 145) { nearMom = false; score += 180; counters.closeCall += 1; addEffect(player.x, player.y, 'NICE!', '#ffdc4f', now); updateMission(now); }
-          if (gap < player.r + mom.r + 4 && player.hiddenUntil <= now && mom.stunnedUntil <= now) endGame(now);
+          if (gap < player.r + mom.r + 4 && player.hiddenUntil <= now && mom.stunnedUntil <= now && player.invulnerableUntil <= now) hitPlayer(now);
           if (now > nextMomLine) { addBubble('mom', pick(LINES.mom), now); nextMomLine = now + 5 + Math.random() * 3; }
         }
 
         if (isChase) {
+          const safeForRecovery = mom.active && distance(player, mom) >= HEALTH_RULES.safeDistance && player.invulnerableUntil <= now;
+          if (health < HEALTH_RULES.max && safeForRecovery) {
+            safeSince ??= now;
+            if (now - safeSince >= HEALTH_RULES.safeDelaySeconds) {
+              if (!passiveRecoveryActive) {
+                passiveRecoveryActive = true;
+                itemText = '💚 안전 회복 시작! 계속 거리를 유지하세요'; itemTextUntil = now + 3; beep('item');
+              }
+              const before = health;
+              health = restoreHealth(health, HEALTH_RULES.passiveRecoveryPerSecond * dt);
+              if (before < HEALTH_RULES.max && health >= HEALTH_RULES.max) {
+                itemText = '💚 체력 완전 회복!'; itemTextUntil = now + 3; addEffect(player.x, player.y, 'FULL!', '#36a878', now); beep('nice');
+                safeSince = null; passiveRecoveryActive = false;
+              }
+            }
+          } else if (health < HEALTH_RULES.max) {
+            safeSince = null; passiveRecoveryActive = false;
+          } else {
+            safeSince = null; passiveRecoveryActive = false;
+          }
           if (!npc && now > nextBrother && Math.random() < .025) spawnBrother(now);
           if (!npc && now > nextDad && Math.random() < .025) spawnDad(now);
           if (npc && now > npc.until) npc = null;
@@ -408,7 +480,12 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.fillStyle = '#fffdf4'; ctx.strokeStyle = '#3b2d27'; ctx.lineWidth = 3; roundedRect(ctx, mom.x - 45, mom.y - 125, 90, 25, 12); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#3b2d27'; ctx.font = '900 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(moodLabel(mom.mood), mom.x, mom.y - 108);
       }
-      drawCharacter(ctx, bank, 'player', player.x, player.y, player.moving, now, 'calm', player.hiddenUntil > now, player.facing, reducedMotion);
+      if (player.invulnerableUntil > now) {
+        ctx.save(); ctx.globalAlpha = .55 + Math.sin(now * 16) * .18; ctx.strokeStyle = '#fff06a'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(player.x, player.y - 8, 34, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      }
+      const hitFlash = !reducedMotion && player.invulnerableUntil > now && Math.floor(now * 10) % 2 === 0;
+      drawCharacter(ctx, bank, 'player', player.x, player.y, player.moving, now, 'calm', player.hiddenUntil > now || hitFlash, player.facing, reducedMotion);
       for (const effect of effects) {
         const life = (now - effect.born) / (effect.until - effect.born);
         ctx.save(); ctx.globalAlpha = 1 - life; ctx.translate(effect.x, effect.y - life * 45); ctx.rotate(-.08 + Math.sin(effect.born * 9) * .08);
@@ -446,6 +523,14 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
               ? (nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'))
               : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
           itemText: itemTextUntil > now ? itemText : '', dashReady: clamp(1 - (player.dashCooldownUntil - now) / 1.35, 0, 1),
+          health: Math.floor(health), maxHealth: HEALTH_RULES.max, recovering: passiveRecoveryActive,
+          recoveryLabel: health >= HEALTH_RULES.max
+            ? '체력 가득'
+            : passiveRecoveryActive
+              ? `자동 회복 +${HEALTH_RULES.passiveRecoveryPerSecond}/초`
+              : safeSince !== null
+                ? `${Math.max(1, Math.ceil(HEALTH_RULES.safeDelaySeconds - (now - safeSince)))}초 후 자동 회복`
+                : '엄마와 거리를 벌리면 회복',
         });
       }
       animation = requestAnimationFrame(frame);
@@ -527,6 +612,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
               {soundOn ? <Volume2 /> : <VolumeX />}
             </Button>
           </header>
+          <section className={`hud-health ${hud.health <= 35 ? 'is-low' : hud.health <= 70 ? 'is-mid' : ''}`}>
+            <div className="health-label"><span id="player-health-label">내 체력</span><strong>{hud.health}/{hud.maxHealth}</strong></div>
+            <meter className="health-track" aria-labelledby="player-health-label" min={0} max={hud.maxHealth} value={hud.health}>{hud.health}/{hud.maxHealth}</meter>
+            <small className={hud.recovering ? 'is-recovering' : ''}>{hud.recoveryLabel}</small>
+          </section>
           <aside className="mission-card">
             <span className="mission-badge">오늘의 미션</span>
             <strong className={hud.mission.done ? 'mission-done' : ''}>{hud.mission.done ? '✓ ' : ''}{hud.mission.title}</strong>
@@ -534,7 +624,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             <small>{Math.floor(hud.mission.progress)} / {hud.mission.target}</small>
           </aside>
           <div className="mom-status">{hud.momMoodLabel}</div>
-          {hud.itemText && <div className="item-toast">{hud.itemText}</div>}
+          <output className="item-toast" aria-live="polite" aria-atomic="true">{hud.itemText}</output>
         </>
       )}
 

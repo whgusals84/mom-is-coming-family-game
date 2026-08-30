@@ -137,6 +137,7 @@ export const LANDMARKS = {
 
 export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
   { id: 'plant', x: 260, y: 520, label: '화분 건드리기', effect: '와장창!', points: 500, rage: 20, cooldown: 999, oneShot: true },
+  { id: 'heal-sink', x: 430, y: 620, label: '세면대에서 물 마시기', effect: '꿀꺽! +30', points: 0, rage: 0, cooldown: 20, heal: 30 },
   { id: 'fridge', x: 1260, y: 565, label: '냉장고 몰래 열기', effect: '냠냠!', points: 200, rage: 5, cooldown: 7, metric: 'snacks' },
   { id: 'dad-mess', x: 530, y: 855, label: '아빠 방 어지럽히기', effect: '우당탕!', points: 400, rage: 15, cooldown: 8 },
   { id: 'brother-mess', x: 1145, y: 275, label: '형 방 인형 산 무너뜨리기', effect: '데굴데굴!', points: 450, rage: 16, cooldown: 9, metric: 'brotherMess' },
@@ -187,6 +188,7 @@ export const LINES = {
 export const ITEMS = [
   { id: 'shoes', icon: '👟', name: '운동화', text: '5초 동안 이동속도 UP!' },
   { id: 'snack', icon: '🍪', name: '과자', text: '보너스 500점!' },
+  { id: 'juice', icon: '🧃', name: '비타민 주스', text: '체력 40 회복!' },
   { id: 'lock', icon: '🔒', name: '방문 잠금', text: '엄마가 잠깐 멈칫!' },
   { id: 'remote', icon: '📺', name: '리모컨', text: '엄마의 시선을 TV로!' },
   { id: 'dadChance', icon: '🕶️', name: '아빠 찬스', text: '엄마를 3초 동안 멈춤!' },

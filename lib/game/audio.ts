@@ -1,4 +1,4 @@
-export type GameTone = 'alert' | 'dash' | 'item' | 'nice' | 'caught';
+export type GameTone = 'alert' | 'dash' | 'item' | 'nice' | 'hurt' | 'caught';
 
 let sharedAudioContext: AudioContext | null = null;
 
@@ -27,8 +27,8 @@ export function playGameTone(kind: GameTone, enabled: boolean) {
   try {
     const osc = audio.createOscillator();
     const gain = audio.createGain();
-    const tones: Record<GameTone, number> = { alert: 330, dash: 520, item: 720, nice: 880, caught: 160 };
-    osc.type = kind === 'caught' ? 'sawtooth' : 'triangle';
+    const tones: Record<GameTone, number> = { alert: 330, dash: 520, item: 720, nice: 880, hurt: 210, caught: 160 };
+    osc.type = kind === 'hurt' || kind === 'caught' ? 'sawtooth' : 'triangle';
     osc.frequency.setValueAtTime(tones[kind], audio.currentTime);
     gain.gain.setValueAtTime(.055, audio.currentTime);
     gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .16);

@@ -18,6 +18,7 @@ export type Interaction = {
   used?: boolean;
   metric?: 'snacks' | 'brotherMess';
   hide?: boolean;
+  heal?: number;
 };
 
 export type MissionKind = 'survive' | 'snacks' | 'brotherMess' | 'closeCall' | 'dad';
@@ -40,6 +41,10 @@ export type HudState = {
   prompt: string;
   itemText: string;
   dashReady: number;
+  health: number;
+  maxHealth: number;
+  recoveryLabel: string;
+  recovering: boolean;
 };
 
 export type GameResult = {
