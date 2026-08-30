@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -491,18 +492,20 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             <DropdownMenuTrigger render={<Button className="explore-menu-trigger" size="icon" aria-label="탐험 메뉴" title="탐험 메뉴" />}>
               <MoreHorizontal />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={8} className="explore-popover">
+            <DropdownMenuContent align="end" side="bottom" sideOffset={8} className="explore-popover">
               <DropdownMenuItem onClick={onOpenHow}><HelpCircle /> 게임 방법</DropdownMenuItem>
               <DropdownMenuItem onClick={onOpenCharacters}><UsersRound /> 가족 소개</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })}>
                 {soundOn ? <Volume2 /> : <VolumeX />} {soundOn ? '소리 끄기' : '소리 켜기'}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="explore-record"><Trophy /> 최고 기록 {highScore.toLocaleString()}점</DropdownMenuLabel>
-              <div className="explore-menu-legend">
-                <span><i className="walkable-swatch" /> 바닥·민트 문턱: 통과 가능</span>
-                <span><i className="blocked-swatch" /> 벽·점선 가구: 통과 불가</span>
-              </div>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="explore-record"><Trophy /> 최고 기록 {highScore.toLocaleString()}점</DropdownMenuLabel>
+                <div className="explore-menu-legend">
+                  <span><i className="walkable-swatch" /> 바닥·민트 문턱: 통과 가능</span>
+                  <span><i className="blocked-swatch" /> 벽·점선 가구: 통과 불가</span>
+                </div>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
