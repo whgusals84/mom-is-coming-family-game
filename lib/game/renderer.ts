@@ -84,7 +84,7 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: (typeof FURNITURE)[n
   } else if (item.kind === 'dollShelf') {
     ctx.strokeStyle = edge; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(item.x + item.w / 2, item.y + 4); ctx.lineTo(item.x + item.w / 2, item.y + item.h - 4); ctx.stroke();
   } else if (item.kind === 'counter') {
-    ctx.fillStyle = '#b9d8d3'; ctx.beginPath(); ctx.arc(item.x + item.w * .25, item.y + item.h / 2, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#b9d8d3'; ctx.beginPath(); ctx.arc(item.x + item.w * .5, item.y + item.h / 2, 16, 0, Math.PI * 2); ctx.fill();
   } else if (item.kind === 'toilet') {
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(item.x + item.w / 2, item.y + item.h / 2, item.w * .27, item.h * .35, 0, 0, Math.PI * 2); ctx.fill();
   } else if (item.kind === 'sink') {

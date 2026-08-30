@@ -75,8 +75,8 @@ export const PASSAGES: Rect[] = [
 
 export const FURNITURE: Rect[] = [
   // 거실
-  { x: 285, y: 150, w: 270, h: 100, label: '소파', kind: 'sofa' },
-  { x: 230, y: 300, w: 70, h: 150, label: 'TV', kind: 'tv' },
+  { x: 285, y: 55, w: 270, h: 100, label: '소파', kind: 'sofa' },
+  { x: 315, y: 480, w: 150, h: 70, label: 'TV', kind: 'tv' },
   { x: 430, y: 350, w: 120, h: 80, label: '테이블', kind: 'table' },
   { x: 230, y: 485, w: 65, h: 65, label: '화분', kind: 'plant' },
   // 현관
@@ -86,15 +86,14 @@ export const FURNITURE: Rect[] = [
   { x: 950, y: 260, w: 160, h: 55, label: '책상', kind: 'desk' },
   { x: 930, y: 75, w: 210, h: 65, label: '인형 선반', kind: 'dollShelf' },
   // 주방/식당
-  { x: 845, y: 405, w: 90, h: 120, label: '냉장고', kind: 'fridge' },
-  { x: 1030, y: 390, w: 300, h: 72, label: '조리대', kind: 'counter' },
-  { x: 1030, y: 462, w: 75, h: 110, label: '싱크대', kind: 'counter' },
-  { x: 1130, y: 505, w: 160, h: 90, label: '식탁', kind: 'dining' },
+  { x: 845, y: 405, w: 160, h: 90, label: '식탁', kind: 'dining' },
+  { x: 1030, y: 390, w: 300, h: 72, label: '조리대 · 싱크대', kind: 'counter' },
+  { x: 1130, y: 505, w: 90, h: 120, label: '냉장고', kind: 'fridge' },
   // 왼쪽 욕실
   { x: 225, y: 592, w: 62, h: 62, label: '변기', kind: 'toilet' },
   { x: 315, y: 592, w: 78, h: 58, label: '세면대', kind: 'sink' },
   // 왼쪽 아래 아빠 방: 빨간 표시 침대, 하늘색 표시 책상
-  { x: 300, y: 805, w: 175, h: 135, label: '아빠 침대', kind: 'bed', visualRotation: 180 },
+  { x: 300, y: 850, w: 175, h: 90, label: '아빠 침대', kind: 'bed', visualRotation: 180 },
   { x: 240, y: 715, w: 185, h: 70, label: '책상', kind: 'desk' },
   { x: 620, y: 845, w: 72, h: 105, label: '옷장', kind: 'closet' },
   // 오른쪽 아래 내 방: 평면도 표시대로 오른쪽 침대, 왼쪽 책상
@@ -132,18 +131,18 @@ export const LANDMARKS = {
   playerSpawn: { x: 610, y: 455 },
   momSpawn: { x: 800, y: 215 },
   entrance: { x: 800, y: 165 },
-  tv: { x: 340, y: 375 },
+  tv: { x: 390, y: 445 },
   introAccident: { x: 650, y: 465 },
 } as const;
 
 export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
   { id: 'plant', x: 260, y: 520, label: '화분 건드리기', effect: '와장창!', points: 500, rage: 20, cooldown: 999, oneShot: true },
-  { id: 'fridge', x: 900, y: 545, label: '냉장고 몰래 열기', effect: '냠냠!', points: 200, rage: 5, cooldown: 7, metric: 'snacks' },
+  { id: 'fridge', x: 1260, y: 565, label: '냉장고 몰래 열기', effect: '냠냠!', points: 200, rage: 5, cooldown: 7, metric: 'snacks' },
   { id: 'dad-mess', x: 530, y: 855, label: '아빠 방 어지럽히기', effect: '우당탕!', points: 400, rage: 15, cooldown: 8 },
   { id: 'brother-mess', x: 1145, y: 275, label: '형 방 인형 산 무너뜨리기', effect: '데굴데굴!', points: 450, rage: 16, cooldown: 9, metric: 'brotherMess' },
   { id: 'ball', x: 650, y: 465, label: '거실에서 공 차기', effect: '쾅!', points: 300, rage: 10, cooldown: 6 },
-  { id: 'sofa', x: 420, y: 285, label: '소파에서 점프하기', effect: '쿵! 쿵!', points: 250, rage: 8, cooldown: 8 },
-  { id: 'crumbs', x: 1160, y: 605, label: '과자 부스러기 흘리기', effect: '사각사각!', points: 220, rage: 7, cooldown: 7 },
+  { id: 'sofa', x: 420, y: 185, label: '소파에서 점프하기', effect: '쿵! 쿵!', points: 250, rage: 8, cooldown: 8 },
+  { id: 'crumbs', x: 925, y: 530, label: '과자 부스러기 흘리기', effect: '사각사각!', points: 220, rage: 7, cooldown: 7 },
   { id: 'hide-player', x: 1110, y: 850, label: '침대 옆에 숨기', effect: '쉿…', points: 0, rage: 0, cooldown: 9, hide: true },
   { id: 'hide-dad', x: 560, y: 900, label: '아빠 옷장 뒤에 숨기', effect: '안 보이지?', points: 0, rage: 0, cooldown: 9, hide: true },
 ];

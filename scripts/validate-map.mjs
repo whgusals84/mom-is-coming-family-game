@@ -44,6 +44,32 @@ function flood(radius) {
   return seen;
 }
 
+function hasPathWithin(radius, start, end, bounds) {
+  const startX = Math.round(start.x / STEP);
+  const startY = Math.round(start.y / STEP);
+  const endKey = key(Math.round(end.x / STEP), Math.round(end.y / STEP));
+  if (isBlocked(start.x, start.y, radius) || isBlocked(end.x, end.y, radius)) return false;
+
+  const queue = [[startX, startY]];
+  const seen = new Set([key(startX, startY)]);
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const [x, y] = queue[cursor];
+    if (key(x, y) === endKey) return true;
+    for (const [dx, dy] of DIRECTIONS) {
+      const nextX = x + dx;
+      const nextY = y + dy;
+      const px = nextX * STEP;
+      const py = nextY * STEP;
+      const nextKey = key(nextX, nextY);
+      if (px < bounds.minX || px > bounds.maxX || py < bounds.minY || py > bounds.maxY) continue;
+      if (seen.has(nextKey) || isBlocked(px, py, radius)) continue;
+      seen.add(nextKey);
+      queue.push([nextX, nextY]);
+    }
+  }
+  return false;
+}
+
 function reachable(seen, point) {
   return seen.has(key(Math.round(point.x / STEP), Math.round(point.y / STEP)));
 }
@@ -80,6 +106,14 @@ for (const radius of [19, 26]) {
       failures.push(`${radius}px ${target.kind} '${target.label}'에 접근할 수 없음`);
     }
   }
+
+  const dadRoomRouteOpen = hasPathWithin(
+    radius,
+    { x: 260, y: 850 },
+    { x: 570, y: 850 },
+    { minX: 215, maxX: 715, minY: 700, maxY: 975 },
+  );
+  if (!dadRoomRouteOpen) failures.push(`${radius}px 아빠 침대와 책상 사이 통로가 막힘`);
 
   if (radius === 19) {
     for (const interaction of INTERACTION_TEMPLATES) {
