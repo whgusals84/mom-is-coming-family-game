@@ -1,8 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Gamepad2, HelpCircle, UsersRound, Volume2, VolumeX } from 'lucide-react';
+import { Gamepad2, HelpCircle, MoreHorizontal, Trophy, UsersRound, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
 import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
 import { clamp, distance, findPath, moveCircle } from '@/lib/game/map';
@@ -19,7 +27,7 @@ type GameCanvasProps = {
   onOpenCharacters: () => void;
 };
 
-type Actor = Point & { r: number; moving: boolean };
+type Actor = Point & { r: number; moving: boolean; facing: 1 | -1 };
 type Mom = Actor & {
   active: boolean; mood: MomMood; path: Point[]; pathAt: number; chaseAt: number;
   stunnedUntil: number; distractedUntil: number; extremeUntil: number; lostUntil: number;
@@ -29,6 +37,7 @@ type Npc = Point & { kind: 'brother' | 'dad'; until: number; good?: boolean; col
 type Bubble = { role: 'player' | 'mom' | 'brother' | 'dad'; text: string; until: number };
 type Effect = Point & { text: string; color: string; until: number; born: number };
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
+type TouchControl = 'left' | 'right' | 'up' | 'down' | 'dash' | 'interact';
 
 const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
@@ -78,6 +87,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let reducedMotion = reducedMotionQuery.matches;
+    const onReducedMotionChange = (event: MediaQueryListEvent) => { reducedMotion = event.matches; };
+    reducedMotionQuery.addEventListener('change', onReducedMotionChange);
+
     const bank = new SpriteBank();
     const keys = new Set<string>();
     let pausedDuration = 0;
@@ -86,10 +100,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     const bootAt = clock();
     let gameStartedAt: number | null = null;
     const player: Actor & { dashUntil: number; dashCooldownUntil: number; speedUntil: number; hiddenUntil: number } = {
-      x: LANDMARKS.playerSpawn.x, y: LANDMARKS.playerSpawn.y, r: 19, moving: false, dashUntil: 0, dashCooldownUntil: 0, speedUntil: 0, hiddenUntil: 0,
+      x: LANDMARKS.playerSpawn.x, y: LANDMARKS.playerSpawn.y, r: 19, moving: false, facing: 1, dashUntil: 0, dashCooldownUntil: 0, speedUntil: 0, hiddenUntil: 0,
     };
     const mom: Mom = {
-      x: LANDMARKS.momSpawn.x, y: LANDMARKS.momSpawn.y, r: 23, moving: false, active: false, mood: 'calm', path: [], pathAt: 0,
+      x: LANDMARKS.momSpawn.x, y: LANDMARKS.momSpawn.y, r: 23, moving: false, facing: -1, active: false, mood: 'calm', path: [], pathAt: 0,
       chaseAt: Infinity, stunnedUntil: 0, distractedUntil: 0, extremeUntil: 0, lostUntil: 0,
       lastSeen: { x: player.x, y: player.y }, nextLoseCheck: Infinity,
     };
@@ -303,11 +317,15 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         if (touch.dash) { touch.dash = false; tryDash(now); }
         if (touch.interact) { touch.interact = false; doInteraction(now); }
         const length = Math.hypot(dx, dy) || 1; dx /= length; dy /= length;
-        player.moving = Math.abs(dx) + Math.abs(dy) > 0 && player.hiddenUntil <= now;
+        const wantsMove = Math.abs(dx) + Math.abs(dy) > 0 && player.hiddenUntil <= now;
+        if (dx < -.1) player.facing = -1;
+        else if (dx > .1) player.facing = 1;
+        player.moving = false;
         const speed = player.dashUntil > now ? 470 : (player.speedUntil > now ? 275 : 205);
         if (player.hiddenUntil <= now) {
           const movement = moveCircle(player, dx * speed * dt, dy * speed * dt, player.r);
-          if (player.moving && movement.blocked && !movement.moved && now >= nextBumpEffect) {
+          player.moving = wantsMove && movement.moved;
+          if (wantsMove && movement.blocked && !movement.moved && now >= nextBumpEffect) {
             nextBumpEffect = now + .75;
             blockedHintUntil = now + 1.25;
             addEffect(player.x + dx * 25, player.y + dy * 25, '툭!', '#6d5142', now, .55);
@@ -328,13 +346,15 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
           mom.mood = mom.extremeUntil > now ? 'extreme' : (mom.stunnedUntil > now || mom.lostUntil > now || player.hiddenUntil > now ? 'search' : 'chase');
           if (now >= mom.pathAt) { mom.path = findPath(mom, target, mom.r + 3); mom.pathAt = now + .42; }
-          mom.moving = now >= mom.stunnedUntil;
-          if (mom.moving && mom.path.length) {
+          mom.moving = false;
+          if (now >= mom.stunnedUntil && mom.path.length) {
             let waypoint = mom.path[0];
             if (distance(mom, waypoint) < 22) { mom.path.shift(); waypoint = mom.path[0] ?? target; }
             const vx = waypoint.x - mom.x; const vy = waypoint.y - mom.y; const vlen = Math.hypot(vx, vy) || 1;
             const momSpeed = 142 + elapsed * .52 + rage * .48 + (mom.extremeUntil > now ? 88 : 0);
-            moveCircle(mom, vx / vlen * momSpeed * dt, vy / vlen * momSpeed * dt, mom.r);
+            if (vx < -.1) mom.facing = -1;
+            else if (vx > .1) mom.facing = 1;
+            mom.moving = moveCircle(mom, vx / vlen * momSpeed * dt, vy / vlen * momSpeed * dt, mom.r).moved;
           }
           const gap = distance(player, mom);
           if (gap < 96) nearMom = true;
@@ -383,11 +403,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           for (let i = 0; i < 5; i++) { const a = now * 4 + i * 1.25; ctx.beginPath(); ctx.moveTo(mom.x + Math.cos(a) * 40, mom.y + Math.sin(a) * 35 - 30); ctx.lineTo(mom.x + Math.cos(a) * 58, mom.y + Math.sin(a) * 52 - 35); ctx.stroke(); }
           ctx.restore();
         }
-        drawCharacter(ctx, bank, 'mom', mom.x, mom.y, mom.moving, now, mom.mood);
+        drawCharacter(ctx, bank, 'mom', mom.x, mom.y, mom.moving, now, mom.mood, false, mom.facing, reducedMotion);
         ctx.fillStyle = '#fffdf4'; ctx.strokeStyle = '#3b2d27'; ctx.lineWidth = 3; roundedRect(ctx, mom.x - 45, mom.y - 125, 90, 25, 12); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#3b2d27'; ctx.font = '900 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(moodLabel(mom.mood), mom.x, mom.y - 108);
       }
-      drawCharacter(ctx, bank, 'player', player.x, player.y, player.moving, now, 'calm', player.hiddenUntil > now);
+      drawCharacter(ctx, bank, 'player', player.x, player.y, player.moving, now, 'calm', player.hiddenUntil > now, player.facing, reducedMotion);
       for (const effect of effects) {
         const life = (now - effect.born) / (effect.until - effect.born);
         ctx.save(); ctx.globalAlpha = 1 - life; ctx.translate(effect.x, effect.y - life * 45); ctx.rotate(-.08 + Math.sin(effect.born * 9) * .08);
@@ -440,19 +460,23 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       stage.removeEventListener('touchmove', preventTouchScroll);
       stage.removeEventListener('contextmenu', preventContextMenu);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      reducedMotionQuery.removeEventListener('change', onReducedMotionChange);
     };
   }, [onGameOver]);
 
-  const hold = (key: keyof typeof touchRef.current, value: boolean) => { touchRef.current[key] = value; };
-  const press = (key: keyof typeof touchRef.current) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const press = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const key = event.currentTarget.dataset.control as TouchControl | undefined;
+    if (!key) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     unlockGameAudio();
-    hold(key, true);
+    touchRef.current[key] = true;
   };
-  const release = (key: keyof typeof touchRef.current) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const release = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const key = event.currentTarget.dataset.control as TouchControl | undefined;
+    if (!key) return;
     event.preventDefault();
-    hold(key, false);
+    touchRef.current[key] = false;
   };
 
   return (
@@ -461,20 +485,26 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
       {phase === 'explore' && (
         <header className="explore-toolbar">
-          <div className="explore-title">
-            <span>자유 탐험 중</span>
-            <strong>엄마가 온다!</strong>
-            <small>게임 전에는 안전해요. 먼저 집 구조를 익혀보세요.</small>
-          </div>
+          <span className="explore-mode">자유 탐험</span>
           <Button className="explore-start" onClick={beginChase}><Gamepad2 /> 게임 시작</Button>
-          <div className="explore-links">
-            <Button variant="secondary" onClick={onOpenHow}><HelpCircle /> 게임 방법</Button>
-            <Button variant="secondary" onClick={onOpenCharacters}><UsersRound /> 가족 소개</Button>
-            <Button className="sound-toggle" variant="secondary" size="icon" onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })} aria-label={soundOn ? '소리 끄기' : '소리 켜기'}>
-              {soundOn ? <Volume2 /> : <VolumeX />}
-            </Button>
-          </div>
-          <div className="explore-best">🏆 최고 기록 <strong>{highScore.toLocaleString()}점</strong></div>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button className="explore-menu-trigger" size="icon" aria-label="탐험 메뉴" title="탐험 메뉴" />}>
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={8} className="explore-popover">
+              <DropdownMenuItem onClick={onOpenHow}><HelpCircle /> 게임 방법</DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenCharacters}><UsersRound /> 가족 소개</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })}>
+                {soundOn ? <Volume2 /> : <VolumeX />} {soundOn ? '소리 끄기' : '소리 켜기'}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="explore-record"><Trophy /> 최고 기록 {highScore.toLocaleString()}점</DropdownMenuLabel>
+              <div className="explore-menu-legend">
+                <span><i className="walkable-swatch" /> 바닥·민트 문턱: 통과 가능</span>
+                <span><i className="blocked-swatch" /> 벽·점선 가구: 통과 불가</span>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
       )}
 
@@ -505,25 +535,19 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         </>
       )}
 
-      {phase === 'explore' && (
-        <aside className="walkability-legend" aria-label="집 이동 규칙">
-          <span><i className="walkable-swatch" /> 방 바닥·민트 문턱: 통과 가능</span>
-          <span><i className="blocked-swatch" /> 갈색 벽·점선 가구: 통과 불가</span>
-        </aside>
-      )}
       <div className="interaction-prompt">{hud.prompt}</div>
       <div className="dash-meter" aria-label="대시 충전"><span style={{ transform: `scaleX(${hud.dashReady})` }} /></div>
 
       <div className="mobile-controls" aria-label="터치 조작">
         <div className="dpad">
-          <button className="up" onPointerDown={press('up')} onPointerUp={release('up')} onPointerCancel={release('up')} onLostPointerCapture={release('up')}>▲</button>
-          <button className="left" onPointerDown={press('left')} onPointerUp={release('left')} onPointerCancel={release('left')} onLostPointerCapture={release('left')}>◀</button>
-          <button className="right" onPointerDown={press('right')} onPointerUp={release('right')} onPointerCancel={release('right')} onLostPointerCapture={release('right')}>▶</button>
-          <button className="down" onPointerDown={press('down')} onPointerUp={release('down')} onPointerCancel={release('down')} onLostPointerCapture={release('down')}>▼</button>
+          <button className="up" data-control="up" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▲</button>
+          <button className="left" data-control="left" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>◀</button>
+          <button className="right" data-control="right" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▶</button>
+          <button className="down" data-control="down" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▼</button>
         </div>
         <div className="action-buttons">
-          <button className="touch-dash" onPointerDown={press('dash')}>DASH<small>대시</small></button>
-          {phase === 'chase' && <button className="touch-e" onPointerDown={press('interact')}>E<small>장난</small></button>}
+          <button className="touch-dash" data-control="dash" onPointerDown={press}>DASH<small>대시</small></button>
+          {phase === 'chase' && <button className="touch-e" data-control="interact" onPointerDown={press}>E<small>장난</small></button>}
         </div>
       </div>
     </div>

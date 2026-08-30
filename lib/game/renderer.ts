@@ -147,12 +147,27 @@ export function drawCharacter(
   time: number,
   mood: MomMood = 'calm',
   hidden = false,
+  facing: 1 | -1 = 1,
+  reducedMotion = false,
 ) {
-  const bob = moving ? Math.sin(time * 14) * 3 : Math.sin(time * 3) * 1.2;
+  const motion = moving && !reducedMotion ? 1 : 0;
+  const phase = motion ? time * 12 : 0;
+  const step = Math.sin(phase);
+  const lift = -Math.abs(step) * 2.4 * motion;
+  const lean = step * .028 * motion;
+  const squash = Math.abs(step) * .012 * motion;
+  const idleBob = !moving && !reducedMotion ? Math.sin(time * 3) * 1.2 : 0;
+
   ctx.save();
   ctx.globalAlpha = hidden ? .42 : 1;
-  ctx.translate(x, y + bob);
+  ctx.translate(x, y);
   ctx.fillStyle = 'rgba(53,38,30,.22)'; ctx.beginPath(); ctx.ellipse(0, 18, role === 'brother' ? 28 : 24, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Keep the collision point and shadow planted while the art rocks around its feet.
+  ctx.translate(0, 21 + lift + idleBob);
+  ctx.rotate(lean);
+  ctx.scale(facing * (1 + squash), 1 - squash);
+  ctx.translate(0, -21);
   const sprite = bank.get(role, moving ? 'run' : 'idle', mood);
   if (sprite) {
     const height = role === 'brother' ? 106 : role === 'mom' ? 103 : 92;
