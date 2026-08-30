@@ -1,5 +1,5 @@
 export type Point = { x: number; y: number };
-export type Rect = { x: number; y: number; w: number; h: number; label?: string; kind?: string };
+export type Rect = { x: number; y: number; w: number; h: number; label?: string; kind?: string; visualRotation?: 0 | 180 };
 
 export type CharacterRole = 'player' | 'mom' | 'brother' | 'dad';
 export type MomMood = 'calm' | 'suspicious' | 'chase' | 'search' | 'extreme';

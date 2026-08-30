@@ -3,8 +3,8 @@ import type { CharacterRole, MomMood, Point } from './types';
 import { SpriteBank } from './sprites';
 
 const COLORS: Record<string, string> = {
-  living: '#eecb98', kitchen: '#cce9df', playerRoom: '#cfe2f6', brotherRoom: '#dfd5f3',
-  hall: '#f4e7c9', foyer: '#c98f7f', dollRoom: '#fff0c9', bathroom: '#e3d6d9', balcony: '#e6e0d2',
+  living: '#eecb98', kitchen: '#cce9df', playerRoom: '#cfe2f6', brotherRoom: '#dfd5f3', dadRoom: '#fff0c9',
+  hall: '#f4e7c9', foyer: '#c98f7f', bathroom: '#e3d6d9', balcony: '#e6e0d2',
 };
 
 export function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -71,8 +71,13 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: (typeof FURNITURE)[n
     ctx.fillStyle = '#4f954f';
     for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.ellipse(item.x + 15 + i * 10, item.y + 24 - (i % 2) * 12, 10, 22, i - 2, 0, Math.PI * 2); ctx.fill(); }
   } else if (item.kind === 'bed') {
+    ctx.save();
+    ctx.translate(item.x + item.w / 2, item.y + item.h / 2);
+    ctx.rotate((item.visualRotation ?? 0) * Math.PI / 180);
+    ctx.translate(-(item.x + item.w / 2), -(item.y + item.h / 2));
     ctx.fillStyle = '#fff4df'; roundedRect(ctx, item.x + 10, item.y + 10, item.w - 20, Math.min(42, item.h * .28), 11); ctx.fill();
     ctx.fillStyle = '#eb7d72'; roundedRect(ctx, item.x + 9, item.y + Math.min(48, item.h * .32), item.w - 18, item.h - Math.min(58, item.h * .38), 10); ctx.fill();
+    ctx.restore();
   } else if (item.kind === 'desk') {
     ctx.fillStyle = '#b8e1ef'; roundedRect(ctx, item.x + 8, item.y + 8, item.w - 16, item.h - 16, 8); ctx.fill();
     ctx.fillStyle = '#4f7786'; ctx.fillRect(item.x + item.w * .68, item.y + 16, item.w * .2, 8);
