@@ -76,7 +76,7 @@ export const PASSAGES: Rect[] = [
 export const FURNITURE: Rect[] = [
   // 거실
   { x: 285, y: 150, w: 270, h: 100, label: '소파', kind: 'sofa' },
-  { x: 650, y: 180, w: 70, h: 150, label: 'TV', kind: 'tv' },
+  { x: 230, y: 300, w: 70, h: 150, label: 'TV', kind: 'tv' },
   { x: 430, y: 350, w: 120, h: 80, label: '테이블', kind: 'table' },
   { x: 230, y: 485, w: 65, h: 65, label: '화분', kind: 'plant' },
   // 현관
@@ -132,7 +132,7 @@ export const LANDMARKS = {
   playerSpawn: { x: 610, y: 455 },
   momSpawn: { x: 800, y: 215 },
   entrance: { x: 800, y: 165 },
-  tv: { x: 610, y: 250 },
+  tv: { x: 340, y: 375 },
   introAccident: { x: 650, y: 465 },
 } as const;
 

@@ -65,6 +65,7 @@ const failures = [];
 for (const radius of [19, 26]) {
   const seen = flood(radius);
   const targets = [
+    { kind: '랜드마크', label: 'TV 앞', point: LANDMARKS.tv },
     ...ROOM_ANCHORS.map((point) => ({ kind: '방', label: point.label, point })),
     ...NPC_SPOTS.map((point, index) => ({ kind: 'NPC', label: String(index + 1), point })),
     ...PASSAGES.map((passage) => ({
