@@ -2,11 +2,13 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://mom-is-coming-family-game.forhm0220.chatgpt.site'),
   title: '엄마가 온다! — 코믹 가족 추격 게임',
   description: '사고를 치고 엄마에게 잡히지 않게 도망치는 귀여운 2D 가족 추격 게임',
   applicationName: '엄마가 온다!',
   manifest: '/manifest.webmanifest',
   formatDetection: { telephone: false },
+  alternates: { canonical: '/' },
   appleWebApp: {
     capable: true,
     title: '엄마가 온다!',
@@ -20,6 +22,7 @@ export const metadata: Metadata = {
     title: '엄마가 온다!',
     description: '사고는 크게, 도망은 빠르게! 우당탕탕 가족 추격 게임',
     type: 'website',
+    url: '/',
     locale: 'ko_KR',
     images: [{
       url: '/og.png',
