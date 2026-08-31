@@ -1,0 +1,43 @@
+name: GitHub Pages 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v4
+      - name: Node.js 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 의존성 설치
+        run: npm ci
+      - name: GitHub Pages용 게임 빌드
+        run: npm run build:github
+      - name: Pages 설정
+        uses: actions/configure-pages@v5
+      - name: 배포 파일 준비
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-github
+      - name: GitHub Pages에 배포
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "build:github": "vite build --config vite.github.config.ts",
     "check:health": "node --experimental-strip-types scripts/validate-health.mjs",
     "check:map": "node --experimental-strip-types scripts/validate-map.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",

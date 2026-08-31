@@ -3,8 +3,8 @@
   "short_name": "엄마가 온다!",
   "description": "사고는 크게, 도망은 빠르게! 우당탕탕 가족 추격 게임",
   "lang": "ko",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "display_override": ["fullscreen", "standalone", "minimal-ui"],
   "orientation": "any",
@@ -13,7 +13,7 @@
   "categories": ["games", "entertainment", "family"],
   "icons": [
     {
-      "src": "/app-icon-1024.png",
+      "src": "./app-icon-1024.png",
       "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any maskable"

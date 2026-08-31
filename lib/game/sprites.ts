@@ -1,15 +1,15 @@
 import type { CharacterRole, MomMood } from './types';
 
 export const SPRITE_PATHS = {
-  player: { idle: '/assets/characters/player/idle.png', run: '/assets/characters/player/idle.png' },
+  player: { idle: 'assets/characters/player/idle.png', run: 'assets/characters/player/idle.png' },
   mom: {
-    idle: '/assets/characters/mom/idle.png',
-    chase: '/assets/characters/mom/idle.png',
-    angry: '/assets/characters/mom/idle.png',
+    idle: 'assets/characters/mom/idle.png',
+    chase: 'assets/characters/mom/idle.png',
+    angry: 'assets/characters/mom/idle.png',
   },
-  brother: { idle: '/assets/characters/brother/idle.png', run: '/assets/characters/brother/idle.png' },
-  dad: { idle: '/assets/characters/dad/idle.png' },
-  doll: { idle: '/assets/characters/brother_doll/doll.png' },
+  brother: { idle: 'assets/characters/brother/idle.png', run: 'assets/characters/brother/idle.png' },
+  dad: { idle: 'assets/characters/dad/idle.png' },
+  doll: { idle: 'assets/characters/brother_doll/doll.png' },
 } as const;
 
 type SpriteState = 'idle' | 'run' | 'chase' | 'angry';

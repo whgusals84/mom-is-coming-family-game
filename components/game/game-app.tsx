@@ -29,7 +29,7 @@ export function GameApp() {
       if (Number.isFinite(saved)) setHighScore(saved);
     } catch { /* Storage may be unavailable in restricted/private browser modes. */ }
     if ('serviceWorker' in navigator) {
-      void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+      void navigator.serviceWorker.register('sw.js').catch(() => undefined);
     }
   }, []);
 
@@ -92,10 +92,10 @@ export function GameApp() {
           <Button className="back-button" variant="ghost" onClick={() => showGame(false)}><ArrowLeft /> 집으로 돌아가기</Button>
           <div className="info-heading"><span>우리 가족</span><h2>누가 내 편일까?</h2></div>
           <div className="character-grid">
-            <article className="character-card mom-card"><div className="character-portrait"><img src="/assets/characters/mom/idle.png" alt="긴 머리의 엄마 캐릭터" /></div><div><span>추격자</span><h3>엄마</h3><p>“오늘도 사고 치는 아들들을 잡으러 간다.”</p></div></article>
-            <article className="character-card brother-card"><div className="character-portrait"><img src="/assets/characters/brother/idle.png" alt="흰 토끼 인형을 든 형 캐릭터" /></div><div><span>랜덤 NPC</span><h3>형</h3><p>“같이 사고는 치지만 잡힐 때는 각자도생.”</p></div></article>
-            <article className="character-card player-card"><div className="character-portrait"><img src="/assets/characters/player/idle.png" alt="플레이어 캐릭터" /></div><div><span>플레이어</span><h3>나</h3><p>“오늘도 살아남아야 한다.”</p></div></article>
-            <article className="character-card dad-card"><div className="character-portrait"><img src="/assets/characters/dad/idle.png" alt="안경을 쓰고 선물 주머니를 든 아빠 캐릭터" /></div><div><span>지원 NPC</span><h3>아빠</h3><p>“난 아무것도 못 봤다.”</p></div></article>
+            <article className="character-card mom-card"><div className="character-portrait"><img src="assets/characters/mom/idle.png" alt="긴 머리의 엄마 캐릭터" /></div><div><span>추격자</span><h3>엄마</h3><p>“오늘도 사고 치는 아들들을 잡으러 간다.”</p></div></article>
+            <article className="character-card brother-card"><div className="character-portrait"><img src="assets/characters/brother/idle.png" alt="흰 토끼 인형을 든 형 캐릭터" /></div><div><span>랜덤 NPC</span><h3>형</h3><p>“같이 사고는 치지만 잡힐 때는 각자도생.”</p></div></article>
+            <article className="character-card player-card"><div className="character-portrait"><img src="assets/characters/player/idle.png" alt="플레이어 캐릭터" /></div><div><span>플레이어</span><h3>나</h3><p>“오늘도 살아남아야 한다.”</p></div></article>
+            <article className="character-card dad-card"><div className="character-portrait"><img src="assets/characters/dad/idle.png" alt="안경을 쓰고 선물 주머니를 든 아빠 캐릭터" /></div><div><span>지원 NPC</span><h3>아빠</h3><p>“난 아무것도 못 봤다.”</p></div></article>
           </div>
           <Button className="primary-cta compact" onClick={() => showGame(true)}>가족 만나러 가기</Button>
         </section>
