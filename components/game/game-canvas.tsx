@@ -15,6 +15,7 @@ import {
 import { playGameTone, startNocturne, stopNocturne, unlockGameAudio, type GameTone } from '@/lib/game/audio';
 import {
   FAMILY_RESTING_POSITIONS,
+  FAMILY_TASK_TARGETS,
   FAMILY_WAKE_POSITIONS,
   INTERACTION_TEMPLATES,
   ITEMS,
@@ -62,11 +63,30 @@ type Effect = Point & { text: string; color: string; until: number; born: number
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
 type TouchControl = 'left' | 'right' | 'up' | 'down' | 'dash' | 'interact';
 type DirectionControl = Extract<TouchControl, 'left' | 'right' | 'up' | 'down'>;
+type FamilyRole = 'mom' | 'brother' | 'dad';
+type FamilyTaskKind = keyof typeof FAMILY_TASK_TARGETS;
+type FamilyTaskCommand = { role: FamilyRole; kind: FamilyTaskKind };
+type FamilyTaskState = {
+  kind: FamilyTaskKind;
+  phase: 'walking' | 'working';
+  workUntil: number;
+  nextEffectAt: number;
+  repathAt: number;
+};
+type NearbyFamily = { role: FamilyRole; name: string; busyLabel: string | null };
 
 const DIRECTION_CONTROLS = new Set<DirectionControl>(['left', 'right', 'up', 'down']);
 
 const PLAYER_MOVE_OPTIONS = { ignoreKinds: ['sofa'] } as const;
 const SOFA_SPEED_MULTIPLIER = 1.38;
+
+const FAMILY_NAMES: Record<FamilyRole, string> = { mom: '엄마', brother: '형', dad: '아빠' };
+const FAMILY_TASKS: Record<FamilyTaskKind, { label: string; icon: string; effect: string; duration: number }> = {
+  dishes: { label: '설거지', icon: '🫧', effect: '뽀득뽀득!', duration: 5.5 },
+  clean: { label: '청소', icon: '🧹', effect: '쓱싹쓱싹!', duration: 5.5 },
+  tv: { label: 'TV 보기', icon: '📺', effect: '재밌다!', duration: 6.5 },
+  turtles: { label: '거북이 밥주기', icon: '🐢', effect: '냠냠!', duration: 5 },
+};
 
 const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
@@ -99,14 +119,22 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const directionPointersRef = useRef(new Map<number, DirectionControl>());
   const soundRef = useRef(true);
   const phaseRef = useRef<GamePhase>(initialPhase);
+  const familyTaskCommandRef = useRef<FamilyTaskCommand | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [phase, setPhase] = useState<GamePhase>(initialPhase);
   const [hud, setHud] = useState(INITIAL_HUD);
+  const [nearbyFamily, setNearbyFamily] = useState<NearbyFamily | null>(null);
 
   const beginChase = () => {
     unlockGameAudio();
     phaseRef.current = 'chase';
     setPhase('chase');
+  };
+
+  const requestFamilyTask = (kind: FamilyTaskKind) => {
+    if (!nearbyFamily || nearbyFamily.busyLabel) return;
+    unlockGameAudio();
+    familyTaskCommandRef.current = { role: nearbyFamily.role, kind };
   };
 
   useEffect(() => {
@@ -194,6 +222,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let playerOnSofa = false;
     let playerNearPiano = false;
     let nearbyRestingRole: 'mom' | 'brother' | 'dad' | null = null;
+    const awakeInExplore: Record<FamilyRole, boolean> = { mom: false, brother: false, dad: false };
+    const familyTasks: Record<FamilyRole, FamilyTaskState | null> = { mom: null, brother: null, dad: null };
+    let nearbyFamilyKey = '';
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
     let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: 1, desiredDpr: 1, minDpr: 1 };
@@ -353,6 +384,93 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       }
     };
 
+    const actorFor = (role: FamilyRole): Mom | Npc => role === 'mom' ? mom : role === 'brother' ? brother : dad;
+
+    const startFamilyTask = (command: FamilyTaskCommand, now: number) => {
+      const actor = actorFor(command.role);
+      const task = FAMILY_TASKS[command.kind];
+      if (phaseRef.current === 'explore' && !awakeInExplore[command.role]) {
+        const wake = FAMILY_WAKE_POSITIONS[command.role];
+        actor.x = wake.x; actor.y = wake.y;
+        awakeInExplore[command.role] = true;
+      }
+      actor.path = findPath(actor, FAMILY_TASK_TARGETS[command.kind], actor.r + 3);
+      actor.moving = false;
+      familyTasks[command.role] = { kind: command.kind, phase: 'walking', workUntil: 0, nextEffectAt: 0, repathAt: now + 1.2 };
+      if (command.role === 'mom') {
+        mom.active = gameStartedAt !== null;
+        mom.mood = 'calm'; mom.pathAt = Infinity;
+      } else if ('targetAt' in actor) {
+        actor.targetAt = Infinity;
+      }
+      const replies: Record<FamilyRole, string> = {
+        mom: `알았어, ${task.label} 하고 올게.`,
+        dad: `아빠에게 맡겨! ${task.label} 시작!`,
+        brother: `내가? 알겠어, ${task.label}!`,
+      };
+      addBubble(command.role, replies[command.role], now, 3);
+      addEffect(actor.x, actor.y - 20, `${task.icon} 출발!`, '#45a996', now, 1.2);
+      itemText = `${FAMILY_NAMES[command.role]}에게 ${task.label} 부탁 완료`; itemTextUntil = now + 2.5;
+      beep('item');
+    };
+
+    const updateFamilyTask = (role: FamilyRole, now: number, dt: number) => {
+      const activeTask = familyTasks[role];
+      if (!activeTask) return false;
+      const actor = actorFor(role);
+      const task = FAMILY_TASKS[activeTask.kind];
+      const target = FAMILY_TASK_TARGETS[activeTask.kind];
+
+      if (activeTask.phase === 'walking') {
+        if (distance(actor, target) < 34) {
+          activeTask.phase = 'working';
+          activeTask.workUntil = now + task.duration;
+          activeTask.nextEffectAt = now;
+          actor.path = []; actor.moving = false;
+          addBubble(role, `${task.label} 하는 중!`, now, 2.2);
+        } else {
+          if (now >= activeTask.repathAt || actor.path.length === 0) {
+            actor.path = findPath(actor, target, actor.r + 3);
+            activeTask.repathAt = now + 1.2;
+          }
+          actor.moving = false;
+          let waypoint = actor.path[0];
+          if (waypoint && distance(actor, waypoint) < 20) { actor.path.shift(); waypoint = actor.path[0]; }
+          if (waypoint) {
+            const vx = waypoint.x - actor.x; const vy = waypoint.y - actor.y;
+            const length = Math.hypot(vx, vy) || 1;
+            if (vx < -.1) actor.facing = -1;
+            else if (vx > .1) actor.facing = 1;
+            const taskSpeed = role === 'brother' ? 112 : role === 'mom' ? 105 : 96;
+            actor.moving = moveCircle(actor, vx / length * taskSpeed * dt, vy / length * taskSpeed * dt, actor.r).moved;
+          }
+        }
+      } else {
+        actor.moving = false;
+        if (now >= activeTask.nextEffectAt) {
+          activeTask.nextEffectAt = now + .78;
+          addEffect(actor.x, actor.y - 24, `${task.icon} ${task.effect}`, activeTask.kind === 'clean' ? '#7556b5' : '#45a996', now, .72);
+        }
+        if (now >= activeTask.workUntil) {
+          familyTasks[role] = null;
+          actor.path = [];
+          if (role === 'mom') {
+            mom.pathAt = 0;
+            if (gameStartedAt !== null) { mom.active = true; mom.mood = 'chase'; }
+          } else if ('targetAt' in actor) {
+            actor.targetAt = now + .8;
+          }
+          const earnedScore = gameStartedAt !== null;
+          if (earnedScore) score += 120;
+          addEffect(actor.x, actor.y - 26, earnedScore ? '완료! +120' : '완료!', '#ef8b45', now, 1.25);
+          addBubble(role, `${task.label} 끝!`, now, 2.4);
+          itemText = `${FAMILY_NAMES[role]}의 ${task.label} 완료!`; itemTextUntil = now + 2.8;
+          beep('nice');
+        }
+      }
+      return true;
+    };
+
     const endGame = (now: number) => {
       if (!running || gameStartedAt === null) return;
       running = false; stopNocturne(); caughtAt = now; beep('caught'); alertText = '엄마에게 잡혔다!'; alertUntil = now + 2;
@@ -483,6 +601,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
       if (running && phaseRef.current === 'chase' && gameStartedAt === null) {
         gameStartedAt = now;
+        for (const role of ['mom', 'brother', 'dad'] as const) {
+          awakeInExplore[role] = true;
+          familyTasks[role] = null;
+        }
         mom.x = FAMILY_WAKE_POSITIONS.mom.x; mom.y = FAMILY_WAKE_POSITIONS.mom.y; mom.mood = 'suspicious';
         brother.x = FAMILY_WAKE_POSITIONS.brother.x; brother.y = FAMILY_WAKE_POSITIONS.brother.y; brother.targetAt = now;
         dad.x = FAMILY_WAKE_POSITIONS.dad.x; dad.y = FAMILY_WAKE_POSITIONS.dad.y; dad.targetAt = now;
@@ -557,6 +679,15 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         else stopNocturne();
         playerNearPiano = nowNearPiano;
 
+        const pendingTask = familyTaskCommandRef.current;
+        if (pendingTask) {
+          familyTaskCommandRef.current = null;
+          if (!familyTasks[pendingTask.role]) startFamilyTask(pendingTask, now);
+        }
+        const momTasking = updateFamilyTask('mom', now, dt);
+        const brotherTasking = updateFamilyTask('brother', now, dt);
+        const dadTasking = updateFamilyTask('dad', now, dt);
+
         if (!isChase) {
           const restingFamily = [
             { role: 'mom' as const, point: FAMILY_RESTING_POSITIONS.mom, line: '저리 가…' },
@@ -564,6 +695,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             { role: 'brother' as const, point: FAMILY_RESTING_POSITIONS.brother, line: '응양응양…' },
           ];
           const closest = restingFamily
+            .filter((family) => !awakeInExplore[family.role])
             .filter((family) => distance(player, family.point) < 110)
             .sort((a, b) => distance(player, a.point) - distance(player, b.point))[0];
           if (closest && closest.role !== nearbyRestingRole) {
@@ -574,7 +706,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           }
         }
 
-        if (isChase && mom.active) {
+        if (isChase && mom.active && !momTasking) {
           if (now > mom.nextLoseCheck) {
             mom.nextLoseCheck = now + 5 + Math.random() * 3;
             if (distance(player, mom) > 360 && rage < 76 && player.hiddenUntil <= now && Math.random() < .36) {
@@ -609,8 +741,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         }
 
         if (isChase) {
-          moveRoamingNpc(brother, dad, 108, now, dt);
-          moveRoamingNpc(dad, brother, 92, now, dt);
+          if (!brotherTasking) moveRoamingNpc(brother, dad, 108, now, dt);
+          if (!dadTasking) moveRoamingNpc(dad, brother, 92, now, dt);
           const safeForRecovery = mom.active && distance(player, mom) >= HEALTH_RULES.safeDistance && player.invulnerableUntil <= now;
           if (health < HEALTH_RULES.max && safeForRecovery) {
             safeSince ??= now;
@@ -671,22 +803,36 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(mom.x, mom.y); ctx.stroke(); ctx.restore();
       }
       if (!isChase) {
-        drawRestingCharacter(ctx, bank, 'mom', FAMILY_RESTING_POSITIONS.mom.x, FAMILY_RESTING_POSITIONS.mom.y, FAMILY_RESTING_POSITIONS.mom.rotation, now);
-        drawRestingCharacter(ctx, bank, 'brother', FAMILY_RESTING_POSITIONS.brother.x, FAMILY_RESTING_POSITIONS.brother.y, FAMILY_RESTING_POSITIONS.brother.rotation, now);
-        drawRestingCharacter(ctx, bank, 'dad', FAMILY_RESTING_POSITIONS.dad.x, FAMILY_RESTING_POSITIONS.dad.y, FAMILY_RESTING_POSITIONS.dad.rotation, now);
+        if (!awakeInExplore.mom) drawRestingCharacter(ctx, bank, 'mom', FAMILY_RESTING_POSITIONS.mom.x, FAMILY_RESTING_POSITIONS.mom.y, FAMILY_RESTING_POSITIONS.mom.rotation, now);
+        if (awakeInExplore.brother) drawCharacter(ctx, bank, 'brother', brother.x, brother.y, brother.moving, now, 'calm', false, brother.facing, reducedMotion);
+        else drawRestingCharacter(ctx, bank, 'brother', FAMILY_RESTING_POSITIONS.brother.x, FAMILY_RESTING_POSITIONS.brother.y, FAMILY_RESTING_POSITIONS.brother.rotation, now);
+        if (awakeInExplore.dad) drawCharacter(ctx, bank, 'dad', dad.x, dad.y, dad.moving, now, 'calm', false, dad.facing, reducedMotion);
+        else drawRestingCharacter(ctx, bank, 'dad', FAMILY_RESTING_POSITIONS.dad.x, FAMILY_RESTING_POSITIONS.dad.y, FAMILY_RESTING_POSITIONS.dad.rotation, now);
       } else {
         drawCharacter(ctx, bank, 'brother', brother.x, brother.y, brother.moving, now, 'calm', false, brother.facing, reducedMotion);
         drawCharacter(ctx, bank, 'dad', dad.x, dad.y, dad.moving, now, 'calm', false, dad.facing, reducedMotion);
       }
-      if (isChase) {
-        if (mom.mood === 'extreme') {
+      if (isChase || awakeInExplore.mom) {
+        if (isChase && mom.mood === 'extreme') {
           ctx.save(); ctx.strokeStyle = '#ef533f'; ctx.lineWidth = 5;
           for (let i = 0; i < 5; i++) { const a = now * 4 + i * 1.25; ctx.beginPath(); ctx.moveTo(mom.x + Math.cos(a) * 40, mom.y + Math.sin(a) * 35 - 30); ctx.lineTo(mom.x + Math.cos(a) * 58, mom.y + Math.sin(a) * 52 - 35); ctx.stroke(); }
           ctx.restore();
         }
         drawCharacter(ctx, bank, 'mom', mom.x, mom.y, mom.moving, now, mom.mood, false, mom.facing, reducedMotion);
-        ctx.fillStyle = '#fffdf4'; ctx.strokeStyle = '#3b2d27'; ctx.lineWidth = 3; roundedRect(ctx, mom.x - 45, mom.y - 125, 90, 25, 12); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#3b2d27'; ctx.font = '900 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(moodLabel(mom.mood), mom.x, mom.y - 108);
+        if (isChase) {
+          ctx.fillStyle = '#fffdf4'; ctx.strokeStyle = '#3b2d27'; ctx.lineWidth = 3; roundedRect(ctx, mom.x - 45, mom.y - 125, 90, 25, 12); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#3b2d27'; ctx.font = '900 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(moodLabel(mom.mood), mom.x, mom.y - 108);
+        }
+      }
+      for (const role of ['mom', 'brother', 'dad'] as const) {
+        const taskState = familyTasks[role];
+        if (!taskState) continue;
+        const actor = actorFor(role);
+        const task = FAMILY_TASKS[taskState.kind];
+        const label = taskState.phase === 'walking' ? `${task.icon} 이동 중` : `${task.icon} ${task.label} 중`;
+        ctx.save(); ctx.fillStyle = '#fff8cf'; ctx.strokeStyle = '#392b24'; ctx.lineWidth = 2;
+        roundedRect(ctx, actor.x - 50, actor.y - 112, 100, 24, 11); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#392b24'; ctx.font = '900 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText(label, actor.x, actor.y - 96); ctx.restore();
       }
       if (player.invulnerableUntil > now) {
         ctx.save(); ctx.globalAlpha = .55 + Math.sin(now * 16) * .18; ctx.strokeStyle = '#fff06a'; ctx.lineWidth = 6;
@@ -716,7 +862,13 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         const at = bubble.role === 'player'
           ? player
           : !isChase
-            ? FAMILY_RESTING_POSITIONS[bubble.role]
+            ? awakeInExplore[bubble.role]
+              ? bubble.role === 'mom'
+                ? mom
+                : bubble.role === 'brother'
+                  ? brother
+                  : dad
+              : FAMILY_RESTING_POSITIONS[bubble.role]
             : bubble.role === 'mom'
               ? mom
               : bubble.role === 'brother'
@@ -743,6 +895,23 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (running && now - lastHud > (resize.width <= 980 ? .18 : .12)) {
         lastHud = now;
         const nearby = isChase ? interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0] : undefined;
+        const familyCandidates = (['mom', 'brother', 'dad'] as const).map((role) => {
+          const point = !isChase && !awakeInExplore[role] ? FAMILY_RESTING_POSITIONS[role] : actorFor(role);
+          return { role, point, gap: distance(player, point) };
+        });
+        const closestFamily = familyCandidates.filter((family) => family.gap < 118).sort((a, b) => a.gap - b.gap)[0];
+        const nextNearby = closestFamily
+          ? {
+              role: closestFamily.role,
+              name: FAMILY_NAMES[closestFamily.role],
+              busyLabel: familyTasks[closestFamily.role] ? FAMILY_TASKS[familyTasks[closestFamily.role]!.kind].label : null,
+            }
+          : null;
+        const nextNearbyKey = nextNearby ? `${nextNearby.role}:${nextNearby.busyLabel ?? 'ready'}` : '';
+        if (nearbyFamilyKey !== nextNearbyKey) {
+          nearbyFamilyKey = nextNearbyKey;
+          setNearbyFamily(nextNearby);
+        }
         setHud({
           score: Math.floor(score), elapsed, rage, rageLabel: rageLabel(rage), momMood: mom.active ? mom.mood : (isChase ? 'suspicious' : 'calm'),
           momMoodLabel: mom.active ? moodLabel(mom.mood) : (isChase ? '🤨 소파에서 일어나는 중' : '😐 쉬는 중'), mission: { ...mission },
@@ -752,6 +921,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
               ? '🛋️ 소파 위 스피드 UP! 엄마는 소파를 돌아와요'
             : playerNearPiano
               ? (soundRef.current ? '🎹 쇼팽 녹턴 Op. 9 No. 2 · 피아노에서 멀어지면 멈춰요' : '🔇 소리를 켜면 쇼팽의 녹턴이 연주돼요')
+            : nextNearby
+              ? nextNearby.busyLabel
+                ? `${nextNearby.name}: ${nextNearby.busyLabel} 하는 중…`
+                : `${nextNearby.name}에게 부탁할 일을 골라보세요`
             : isChase
               ? (nearby ? `E · ${nearby.label}` : (!dad.collected ? '집을 돌아다니는 아빠에게 가까이 가세요!' : '아빠와 형도 집 안을 돌아다니고 있어요'))
               : nearbyRestingRole
@@ -891,7 +1064,26 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         </>
       )}
 
-      <div className="interaction-prompt">{hud.prompt}</div>
+      {nearbyFamily && (
+        <section className="family-request-panel" aria-label={`${nearbyFamily.name}에게 부탁하기`}>
+          <div className="family-request-heading">
+            <span>가까운 가족</span>
+            <strong>{nearbyFamily.name}에게 부탁하기</strong>
+            {nearbyFamily.busyLabel && <small>{nearbyFamily.busyLabel} 하는 중이라 잠시 기다려 주세요</small>}
+          </div>
+          <div className="family-request-actions">
+            {(['dishes', 'clean', 'tv', 'turtles'] as const).map((kind) => {
+              const task = FAMILY_TASKS[kind];
+              return (
+                <button key={kind} type="button" disabled={Boolean(nearbyFamily.busyLabel)} onClick={() => requestFamilyTask(kind)}>
+                  <span>{task.icon}</span>{task.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      <div className={`interaction-prompt ${nearbyFamily ? 'with-family-request' : ''}`}>{hud.prompt}</div>
       <div className="dash-meter" aria-label="대시 충전"><span style={{ transform: `scaleX(${hud.dashReady})` }} /></div>
 
       <div className="mobile-controls" aria-label="터치 조작">

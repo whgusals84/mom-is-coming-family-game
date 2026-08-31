@@ -1,5 +1,6 @@
 import {
   FAMILY_RESTING_POSITIONS,
+  FAMILY_TASK_TARGETS,
   FAMILY_WAKE_POSITIONS,
   INTERACTION_TEMPLATES,
   FURNITURE,
@@ -282,6 +283,10 @@ for (const { role, point, furniture } of restingFurniture) {
 }
 for (const [role, point] of Object.entries(FAMILY_WAKE_POSITIONS)) {
   if (isBlocked(point.x, point.y, MOM_PATH_RADIUS)) failures.push(`${role}의 기상 위치가 가구나 벽에 막힘`);
+}
+for (const [task, point] of Object.entries(FAMILY_TASK_TARGETS)) {
+  if (isBlocked(point.x, point.y, MOM_PATH_RADIUS)) failures.push(`${task} 집안일 위치가 가구나 벽에 막힘`);
+  if (!hasAiGridPath(LANDMARKS.playerSpawn, point, MOM_PATH_RADIUS)) failures.push(`${task} 집안일 위치까지 AI 경로가 끊김`);
 }
 if (!finalPiano || finalPiano.x !== 206 || finalPiano.y !== 72 || finalPiano.w !== 48 || finalPiano.h !== 124)
   failures.push('최종 거실 피아노 배치가 저장된 배치도와 다름');

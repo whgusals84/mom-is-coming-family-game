@@ -356,6 +356,15 @@ export const FAMILY_WAKE_POSITIONS = {
   dad: { x: 570, y: 920 },
 } as const;
 
+// 가족에게 부탁한 집안일의 실제 목적지다. 캐릭터 로직과 가구 렌더링을
+// 분리하되, 가구 배치가 바뀌면 이 접근 지점만 함께 옮기면 된다.
+export const FAMILY_TASK_TARGETS = {
+  dishes: { x: 1110, y: 475 },
+  clean: { x: 650, y: 465 },
+  tv: { x: 390, y: 455 },
+  turtles: { x: 270, y: 450 },
+} as const;
+
 export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
   {
     id: 'plant',
