@@ -417,6 +417,33 @@ export function drawCharacter(
   ctx.restore();
 }
 
+export function drawRestingCharacter(
+  ctx: CanvasRenderingContext2D,
+  bank: SpriteBank,
+  role: CharacterRole,
+  x: number,
+  y: number,
+  rotation: number,
+  time: number,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  drawCharacter(ctx, bank, role, 0, 31, false, time, 'calm', false, 1, true);
+  ctx.restore();
+
+  const bob = Math.sin(time * 2.4) * 3;
+  ctx.save();
+  ctx.font = '1000 19px system-ui';
+  ctx.fillStyle = '#6b5bb5';
+  ctx.strokeStyle = '#fffdf4';
+  ctx.lineWidth = 5;
+  ctx.textAlign = 'center';
+  ctx.strokeText('Z z z', x + 35, y - 35 + bob);
+  ctx.fillText('Z z z', x + 35, y - 35 + bob);
+  ctx.restore();
+}
+
 function drawFallbackCharacter(
   ctx: CanvasRenderingContext2D,
   role: CharacterRole,

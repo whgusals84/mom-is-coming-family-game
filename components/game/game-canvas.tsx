@@ -13,10 +13,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
-import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, LIVING_SOFA, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
+import {
+  FAMILY_RESTING_POSITIONS,
+  FAMILY_WAKE_POSITIONS,
+  INTERACTION_TEMPLATES,
+  ITEMS,
+  LANDMARKS,
+  LINES,
+  LIVING_SOFA,
+  MISSIONS,
+  NPC_SPOTS,
+  WORLD,
+} from '@/lib/game/data';
 import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
 import { clamp, distance, findPath, moveCircle, pointInRect } from '@/lib/game/map';
-import { drawCharacter, drawMap, drawMarker, drawSpeech, roundedRect } from '@/lib/game/renderer';
+import { drawCharacter, drawMap, drawMarker, drawRestingCharacter, drawSpeech, roundedRect } from '@/lib/game/renderer';
 import { SpriteBank } from '@/lib/game/sprites';
 import type { GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
 
@@ -35,7 +46,16 @@ type Mom = Actor & {
   stunnedUntil: number; distractedUntil: number; extremeUntil: number; lostUntil: number;
   lastSeen: Point; nextLoseCheck: number;
 };
-type Npc = Point & { kind: 'brother' | 'dad'; until: number; good?: boolean; collected?: boolean; line: string };
+type Npc = Actor & {
+  kind: 'brother' | 'dad';
+  path: Point[];
+  pathAt: number;
+  targetAt: number;
+  good: boolean;
+  collected: boolean;
+  line: string;
+  bumpCooldownUntil: number;
+};
 type Bubble = { role: 'player' | 'mom' | 'brother' | 'dad'; text: string; until: number };
 type Effect = Point & { text: string; color: string; until: number; born: number };
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
@@ -109,9 +129,17 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       x: LANDMARKS.playerSpawn.x, y: LANDMARKS.playerSpawn.y, r: 19, moving: false, facing: 1, dashUntil: 0, dashCooldownUntil: 0, speedUntil: 0, hiddenUntil: 0, invulnerableUntil: 0,
     };
     const mom: Mom = {
-      x: LANDMARKS.momSpawn.x, y: LANDMARKS.momSpawn.y, r: 23, moving: false, facing: -1, active: false, mood: 'calm', path: [], pathAt: 0,
+      x: FAMILY_WAKE_POSITIONS.mom.x, y: FAMILY_WAKE_POSITIONS.mom.y, r: 23, moving: false, facing: -1, active: false, mood: 'calm', path: [], pathAt: 0,
       chaseAt: Infinity, stunnedUntil: 0, distractedUntil: 0, extremeUntil: 0, lostUntil: 0,
       lastSeen: { x: player.x, y: player.y }, nextLoseCheck: Infinity,
+    };
+    const brother: Npc = {
+      ...FAMILY_WAKE_POSITIONS.brother, r: 22, moving: false, facing: -1, kind: 'brother', path: [], pathAt: 0,
+      targetAt: 0, good: true, collected: true, line: '', bumpCooldownUntil: 0,
+    };
+    const dad: Npc = {
+      ...FAMILY_WAKE_POSITIONS.dad, r: 21, moving: false, facing: 1, kind: 'dad', path: [], pathAt: 0,
+      targetAt: 0, good: true, collected: true, line: '', bumpCooldownUntil: 0,
     };
     const interactions: Interaction[] = INTERACTION_TEMPLATES.map((item) => ({ ...item, lastUsed: -999 }));
     const missionSeed = pick(MISSIONS);
@@ -143,7 +171,6 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let blockedHintUntil = 0;
     let nextBumpEffect = 0;
     let playerOnSofa = false;
-    let npc: Npc | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
     let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: Math.min(devicePixelRatio || 1, 2) };
@@ -221,25 +248,26 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       }
     };
 
-    const spawnBrother = (now: number) => {
-      const point = pick(NPC_SPOTS.filter((p) => distance(p, player) > 180));
+    const triggerBrother = (now: number) => {
       const good = Math.random() < .57;
-      npc = { ...point, kind: 'brother', until: now + 8, good, line: pick(good ? LINES.brotherGood : LINES.brotherBad) };
-      addBubble('brother', npc.line, now, 3.5);
+      brother.good = good;
+      brother.line = pick(good ? LINES.brotherGood : LINES.brotherBad);
+      addBubble('brother', brother.line, now, 3.5);
       if (good) helpUntil = now + 7;
       else { mom.lostUntil = 0; mom.lastSeen = { x: player.x, y: player.y }; mom.pathAt = 0; makeAngry(7, now); }
       nextBrother = now + 18 + Math.random() * 9;
     };
 
-    const spawnDad = (now: number) => {
-      const point = pick(NPC_SPOTS.filter((p) => distance(p, player) > 180));
-      npc = { ...point, kind: 'dad', until: now + 11, line: pick(LINES.dad), collected: false };
-      addBubble('dad', npc.line, now, 3.5); nextDad = now + 23 + Math.random() * 10;
+    const offerDadItem = (now: number) => {
+      dad.collected = false;
+      dad.line = pick(LINES.dad);
+      addBubble('dad', `${dad.line} 이리 와!`, now, 3.5);
+      nextDad = now + 23 + Math.random() * 10;
     };
 
     const grantDadItem = (now: number) => {
-      if (!npc || npc.kind !== 'dad' || npc.collected) return;
-      npc.collected = true; counters.dad += 1; score += 150;
+      if (dad.collected) return;
+      dad.collected = true; counters.dad += 1; score += 150;
       const juice = ITEMS.find((item) => item.id === 'juice')!;
       const regularItems = ITEMS.filter((item) => item.id !== 'juice');
       const item = HEALTH_RULES.max - health >= 1 && Math.random() < .45 ? juice : pick(regularItems);
@@ -255,7 +283,48 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (item.id === 'lock') mom.stunnedUntil = Math.max(mom.stunnedUntil, now + 2.2);
       if (item.id === 'remote') { mom.distractedUntil = now + 4.2; mom.pathAt = 0; }
       if (item.id === 'dadChance') mom.stunnedUntil = Math.max(mom.stunnedUntil, now + 3);
-      addEffect(npc.x, npc.y, item.icon, '#fff36d', now, 1.3); addBubble('dad', '빨리 가!', now); beep('item'); updateMission(now);
+      addEffect(dad.x, dad.y, item.icon, '#fff36d', now, 1.3); addBubble('dad', '빨리 가!', now); beep('item'); updateMission(now);
+    };
+
+    const handleFamilyBump = (family: Npc, now: number) => {
+      if (now < family.bumpCooldownUntil) return;
+      family.bumpCooldownUntil = now + 1.3;
+      addEffect((player.x + family.x) / 2, (player.y + family.y) / 2, '쿵!', '#f29b54', now, .8);
+      addBubble(family.kind, family.kind === 'brother' ? '앞 좀 봐! ㅋㅋ' : '어이쿠, 조심!', now, 1.8);
+      addBubble('player', '앗, 부딪혔다!', now, 1.6);
+      beep('alert');
+    };
+
+    const moveRoamingNpc = (family: Npc, other: Npc, speed: number, now: number, dt: number) => {
+      if (now >= family.targetAt || family.path.length === 0) {
+        const candidates = NPC_SPOTS.filter((point) => distance(point, family) > 160);
+        const target = pick(candidates.length ? candidates : NPC_SPOTS);
+        family.path = findPath(family, target, family.r + 3);
+        family.targetAt = now + 6 + Math.random() * 4;
+      }
+      family.moving = false;
+      if (!family.path.length) return;
+      let waypoint = family.path[0];
+      if (distance(family, waypoint) < 20) {
+        family.path.shift();
+        waypoint = family.path[0];
+      }
+      if (!waypoint) return;
+      const vx = waypoint.x - family.x;
+      const vy = waypoint.y - family.y;
+      const length = Math.hypot(vx, vy) || 1;
+      const before = { x: family.x, y: family.y };
+      if (vx < -.1) family.facing = -1;
+      else if (vx > .1) family.facing = 1;
+      const movement = moveCircle(family, vx / length * speed * dt, vy / length * speed * dt, family.r);
+      family.moving = movement.moved;
+      const hitPlayer = distance(family, player) < family.r + player.r + 3;
+      const hitOther = distance(family, other) < family.r + other.r + 3;
+      if (hitPlayer || hitOther) {
+        family.x = before.x; family.y = before.y; family.moving = false;
+        family.path = []; family.targetAt = now + .7;
+        if (hitPlayer) handleFamilyBump(family, now);
+      }
     };
 
     const endGame = (now: number) => {
@@ -344,10 +413,13 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
       if (running && phaseRef.current === 'chase' && gameStartedAt === null) {
         gameStartedAt = now;
+        mom.x = FAMILY_WAKE_POSITIONS.mom.x; mom.y = FAMILY_WAKE_POSITIONS.mom.y; mom.mood = 'suspicious';
+        brother.x = FAMILY_WAKE_POSITIONS.brother.x; brother.y = FAMILY_WAKE_POSITIONS.brother.y; brother.targetAt = now;
+        dad.x = FAMILY_WAKE_POSITIONS.dad.x; dad.y = FAMILY_WAKE_POSITIONS.dad.y; dad.targetAt = now;
         mom.chaseAt = now + 4.2;
         mom.nextLoseCheck = now + 10;
         nextBrother = now + 10;
-        nextDad = now + 15;
+        nextDad = now + 9;
         nextMomLine = now + 8;
         player.dashUntil = 0;
         player.dashCooldownUntil = 0;
@@ -378,6 +450,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         if (dx < -.1) player.facing = -1;
         else if (dx > .1) player.facing = 1;
         player.moving = false;
+        const playerBeforeMove = { x: player.x, y: player.y };
         const sofaBoostAtFrameStart = pointInRect(player, LIVING_SOFA);
         const baseSpeed = player.dashUntil > now ? 470 : (player.speedUntil > now ? 275 : 205);
         const speed = baseSpeed * (sofaBoostAtFrameStart ? SOFA_SPEED_MULTIPLIER : 1);
@@ -388,6 +461,13 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             nextBumpEffect = now + .75;
             blockedHintUntil = now + 1.25;
             addEffect(player.x + dx * 25, player.y + dy * 25, '툭!', '#6d5142', now, .55);
+          }
+        }
+        if (isChase) {
+          const bumpedFamily = [brother, dad].find((family) => distance(player, family) < player.r + family.r + 3);
+          if (bumpedFamily) {
+            player.x = playerBeforeMove.x; player.y = playerBeforeMove.y; player.moving = false;
+            handleFamilyBump(bumpedFamily, now);
           }
         }
         const nowOnSofa = pointInRect(player, LIVING_SOFA);
@@ -430,6 +510,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         }
 
         if (isChase) {
+          moveRoamingNpc(brother, dad, 108, now, dt);
+          moveRoamingNpc(dad, brother, 92, now, dt);
           const safeForRecovery = mom.active && distance(player, mom) >= HEALTH_RULES.safeDistance && player.invulnerableUntil <= now;
           if (health < HEALTH_RULES.max && safeForRecovery) {
             safeSince ??= now;
@@ -450,10 +532,12 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           } else {
             safeSince = null; passiveRecoveryActive = false;
           }
-          if (!npc && now > nextBrother && Math.random() < .025) spawnBrother(now);
-          if (!npc && now > nextDad && Math.random() < .025) spawnDad(now);
-          if (npc && now > npc.until) npc = null;
-          if (npc?.kind === 'dad' && !npc.collected && distance(player, npc) < 80) grantDadItem(now);
+          if (now > nextBrother) triggerBrother(now);
+          if (now > nextDad) {
+            if (dad.collected) offerDadItem(now);
+            else nextDad = now + 6;
+          }
+          if (!dad.collected && distance(player, dad) < 80) grantDadItem(now);
           score += dt * 10;
           updateMission(now);
         }
@@ -482,8 +566,15 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.save(); ctx.strokeStyle = '#ffd945'; ctx.lineWidth = 7; ctx.setLineDash([14, 12]);
         ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(mom.x, mom.y); ctx.stroke(); ctx.restore();
       }
-      if (npc) drawCharacter(ctx, bank, npc.kind, npc.x, npc.y, false, now, 'calm');
-      if (mom.active) {
+      if (!isChase) {
+        drawRestingCharacter(ctx, bank, 'mom', FAMILY_RESTING_POSITIONS.mom.x, FAMILY_RESTING_POSITIONS.mom.y, FAMILY_RESTING_POSITIONS.mom.rotation, now);
+        drawRestingCharacter(ctx, bank, 'brother', FAMILY_RESTING_POSITIONS.brother.x, FAMILY_RESTING_POSITIONS.brother.y, FAMILY_RESTING_POSITIONS.brother.rotation, now);
+        drawRestingCharacter(ctx, bank, 'dad', FAMILY_RESTING_POSITIONS.dad.x, FAMILY_RESTING_POSITIONS.dad.y, FAMILY_RESTING_POSITIONS.dad.rotation, now);
+      } else {
+        drawCharacter(ctx, bank, 'brother', brother.x, brother.y, brother.moving, now, 'calm', false, brother.facing, reducedMotion);
+        drawCharacter(ctx, bank, 'dad', dad.x, dad.y, dad.moving, now, 'calm', false, dad.facing, reducedMotion);
+      }
+      if (isChase) {
         if (mom.mood === 'extreme') {
           ctx.save(); ctx.strokeStyle = '#ef533f'; ctx.lineWidth = 5;
           for (let i = 0; i < 5; i++) { const a = now * 4 + i * 1.25; ctx.beginPath(); ctx.moveTo(mom.x + Math.cos(a) * 40, mom.y + Math.sin(a) * 35 - 30); ctx.lineTo(mom.x + Math.cos(a) * 58, mom.y + Math.sin(a) * 52 - 35); ctx.stroke(); }
@@ -518,8 +609,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.font = `1000 ${effect.text.length <= 2 ? 36 : 30}px system-ui`; ctx.textAlign = 'center'; ctx.lineWidth = 7; ctx.strokeStyle = '#fffdf4'; ctx.strokeText(effect.text, 0, 0); ctx.fillStyle = effect.color; ctx.fillText(effect.text, 0, 0); ctx.restore();
       }
       for (const bubble of bubbles) {
-        const at = bubble.role === 'player' ? player : bubble.role === 'mom' ? mom : (npc && npc.kind === bubble.role ? npc : null);
-        if (at && (bubble.role !== 'mom' || mom.active)) drawSpeech(ctx, at, bubble.text, bubble.role === 'mom' ? '#ffd7d0' : bubble.role === 'dad' ? '#fff0ad' : '#fffdf4');
+        const at = bubble.role === 'player' ? player : bubble.role === 'mom' ? mom : bubble.role === 'brother' ? brother : dad;
+        if (bubble.role !== 'mom' || mom.active) drawSpeech(ctx, at, bubble.text, bubble.role === 'mom' ? '#ffd7d0' : bubble.role === 'dad' ? '#fff0ad' : '#fffdf4');
       }
       ctx.restore();
 
@@ -541,14 +632,14 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         lastHud = now;
         const nearby = isChase ? interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0] : undefined;
         setHud({
-          score: Math.floor(score), elapsed, rage, rageLabel: rageLabel(rage), momMood: mom.active ? mom.mood : 'calm',
-          momMoodLabel: mom.active ? moodLabel(mom.mood) : '😐 아직 안 옴', mission: { ...mission },
+          score: Math.floor(score), elapsed, rage, rageLabel: rageLabel(rage), momMood: mom.active ? mom.mood : (isChase ? 'suspicious' : 'calm'),
+          momMoodLabel: mom.active ? moodLabel(mom.mood) : (isChase ? '🤨 소파에서 일어나는 중' : '😐 쉬는 중'), mission: { ...mission },
           prompt: blockedHintUntil > now
             ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
             : playerOnSofa
               ? '🛋️ 소파 위 스피드 UP! 엄마는 소파를 돌아와요'
             : isChase
-              ? (nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'))
+              ? (nearby ? `E · ${nearby.label}` : (!dad.collected ? '집을 돌아다니는 아빠에게 가까이 가세요!' : '아빠와 형도 집 안을 돌아다니고 있어요'))
               : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
           itemText: itemTextUntil > now ? itemText : '', dashReady: clamp(1 - (player.dashCooldownUntil - now) / 1.35, 0, 1),
           health: Math.floor(health), maxHealth: HEALTH_RULES.max, recovering: passiveRecoveryActive,

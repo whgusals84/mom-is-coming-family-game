@@ -1,4 +1,6 @@
 import {
+  FAMILY_RESTING_POSITIONS,
+  FAMILY_WAKE_POSITIONS,
   INTERACTION_TEMPLATES,
   FURNITURE,
   LANDMARKS,
@@ -261,6 +263,18 @@ const livingSofa = FURNITURE.find((item) => item.kind === 'sofa');
 const livingDining = FURNITURE.find(
   (item) => item.label === '식탁' && item.x < 600,
 );
+const restingFurniture = [
+  { role: '엄마', point: FAMILY_RESTING_POSITIONS.mom, furniture: FURNITURE.find((item) => item.kind === 'sofa') },
+  { role: '형', point: FAMILY_RESTING_POSITIONS.brother, furniture: FURNITURE.find((item) => item.label === '형 침대') },
+  { role: '아빠', point: FAMILY_RESTING_POSITIONS.dad, furniture: FURNITURE.find((item) => item.label === '아빠 침대') },
+];
+for (const { role, point, furniture } of restingFurniture) {
+  if (!furniture || point.x < furniture.x || point.x > furniture.x + furniture.w || point.y < furniture.y || point.y > furniture.y + furniture.h)
+    failures.push(`${role}의 휴식 위치가 지정 가구 위에 있지 않음`);
+}
+for (const [role, point] of Object.entries(FAMILY_WAKE_POSITIONS)) {
+  if (isBlocked(point.x, point.y, MOM_PATH_RADIUS)) failures.push(`${role}의 기상 위치가 가구나 벽에 막힘`);
+}
 if (!finalPiano || finalPiano.x !== 206 || finalPiano.y !== 72 || finalPiano.w !== 48 || finalPiano.h !== 124)
   failures.push('최종 거실 피아노 배치가 저장된 배치도와 다름');
 if (!livingSofa || livingSofa.x !== 310 || livingSofa.y !== 50 || livingSofa.w !== 225 || livingSofa.h !== 82)

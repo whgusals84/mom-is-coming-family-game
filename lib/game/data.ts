@@ -298,10 +298,22 @@ export const SOLIDS = [...WALLS, ...FURNITURE];
 
 export const LANDMARKS = {
   playerSpawn: { x: 610, y: 455 },
-  momSpawn: { x: 800, y: 215 },
+  momSpawn: { x: 575, y: 170 },
   entrance: { x: 800, y: 165 },
   tv: { x: 390, y: 445 },
   introAccident: { x: 650, y: 465 },
+} as const;
+
+export const FAMILY_RESTING_POSITIONS = {
+  mom: { x: 422, y: 91, rotation: Math.PI / 2 },
+  brother: { x: 1210, y: 165, rotation: 0 },
+  dad: { x: 390, y: 906, rotation: Math.PI / 2 },
+} as const;
+
+export const FAMILY_WAKE_POSITIONS = {
+  mom: LANDMARKS.momSpawn,
+  brother: { x: 1080, y: 200 },
+  dad: { x: 570, y: 920 },
 } as const;
 
 export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
