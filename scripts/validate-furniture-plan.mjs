@@ -4,8 +4,11 @@ import {
   createFurniturePlanMarker,
   furniturePlanWorldToScreen,
   getFurniturePlanFootprint,
+  getFurniturePlanResizeHandle,
   parseFurniturePlan,
   pointHitsFurniturePlanMarker,
+  pointHitsFurniturePlanResizeHandle,
+  resizeFurniturePlanMarkerFromHandle,
   sanitizeFurniturePlan,
   screenToFurniturePlanWorld,
   setFurniturePlanFootprintSize,
@@ -30,6 +33,17 @@ const resizedAgain = setFurniturePlanFootprintSize(resized, 'height', 80);
 assert.deepEqual(getFurniturePlanFootprint(resizedAgain), { w: 220, h: 80 }, '지도 기준 세로 크기를 조절해야 합니다.');
 assert.deepEqual(getFurniturePlanFootprint(setFurniturePlanFootprintSize(marker, 'width', 999)), { w: 320, h: 170 });
 assert.deepEqual(getFurniturePlanFootprint(setFurniturePlanFootprintSize(marker, 'height', 1)), { w: 110, h: 28 });
+
+const resizeHandle = getFurniturePlanResizeHandle(rotated);
+assert.equal(pointHitsFurniturePlanResizeHandle(resizeHandle, rotated), true);
+assert.equal(pointHitsFurniturePlanResizeHandle({ x: resizeHandle.x + 19, y: resizeHandle.y }, rotated), false);
+const draggedResize = resizeFurniturePlanMarkerFromHandle(rotated, {
+  x: rotated.x - 85 + 230,
+  y: rotated.y - 55 + 90,
+});
+assert.deepEqual(getFurniturePlanFootprint(draggedResize), { w: 230, h: 90 });
+assert.equal(draggedResize.x, rotated.x - 85 + 115, '크기를 바꿀 때 왼쪽 모서리가 고정되어야 합니다.');
+assert.equal(draggedResize.y, rotated.y - 55 + 45, '크기를 바꿀 때 위쪽 모서리가 고정되어야 합니다.');
 
 const saved = serializeFurniturePlan([marker, rotated]);
 const loaded = parseFurniturePlan(saved);
@@ -62,4 +76,4 @@ for (const zoom of [0.62, 1, 1.18]) {
   }
 }
 
-console.log('가구 배치 표시 검사 통과: 저장, 복구, 크기, 회전, 경계와 화면 좌표가 정상입니다.');
+console.log('가구 배치 표시 검사 통과: 저장, 직접 이동·크기 조절, 회전, 경계와 화면 좌표가 정상입니다.');

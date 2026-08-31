@@ -25,8 +25,10 @@ import {
   createFurniturePlanMarker,
   getFurniturePlanDefinition,
   getFurniturePlanFootprint,
+  pointHitsFurniturePlanResizeHandle,
   parseFurniturePlan,
   pointHitsFurniturePlanMarker,
+  resizeFurniturePlanMarkerFromHandle,
   screenToFurniturePlanWorld,
   serializeFurniturePlan,
   setFurniturePlanFootprintSize,
@@ -61,6 +63,7 @@ type FurniturePlanCamera = { cameraX: number; cameraY: number; zoom: number; sha
 type FurniturePlanDrag = {
   pointerId: number;
   markerId: string;
+  mode: 'move' | 'resize';
   offsetX: number;
   offsetY: number;
   startClientX: number;
@@ -227,15 +230,23 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     event.preventDefault();
     const point = canvasPointToWorld(event);
     const hitPadding = 22 / furniturePlanCameraRef.current.zoom;
+    const selectedMarker = furniturePlanMarkersRef.current.find(
+      (item) => item.id === selectedFurniturePlanMarkerRef.current,
+    );
+    const resizeSelected = selectedMarker
+      ? pointHitsFurniturePlanResizeHandle(point, selectedMarker, 24 / furniturePlanCameraRef.current.zoom)
+      : false;
     let marker = [...furniturePlanMarkersRef.current]
       .reverse()
       .find((item) => pointHitsFurniturePlanMarker(point, item, hitPadding));
+    if (resizeSelected) marker = selectedMarker;
     if (!marker) marker = addFurniturePlanMarkerAt(point) ?? undefined;
     if (!marker) return;
     selectFurniturePlanMarker(marker.id);
     furniturePlanDragRef.current = {
       pointerId: event.pointerId,
       markerId: marker.id,
+      mode: resizeSelected ? 'resize' : 'move',
       offsetX: point.x - marker.x,
       offsetY: point.y - marker.y,
       startClientX: event.clientX,
@@ -243,21 +254,40 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       original: { ...marker },
       moved: false,
     };
+    event.currentTarget.style.cursor = resizeSelected ? 'nwse-resize' : 'grabbing';
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const onFurniturePlanPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const drag = furniturePlanDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || !event.isPrimary) return;
+    if (!drag) {
+      if (!furniturePlanModeRef.current || event.pointerType !== 'mouse') return;
+      const point = canvasPointToWorld(event);
+      const selectedMarker = furniturePlanMarkersRef.current.find(
+        (item) => item.id === selectedFurniturePlanMarkerRef.current,
+      );
+      if (selectedMarker && pointHitsFurniturePlanResizeHandle(point, selectedMarker, 24 / furniturePlanCameraRef.current.zoom)) {
+        event.currentTarget.style.cursor = 'nwse-resize';
+      } else if (furniturePlanMarkersRef.current.some((item) => pointHitsFurniturePlanMarker(point, item, 8))) {
+        event.currentTarget.style.cursor = 'grab';
+      } else {
+        event.currentTarget.style.cursor = 'crosshair';
+      }
+      return;
+    }
+    if (drag.pointerId !== event.pointerId || !event.isPrimary) return;
     event.preventDefault();
     if (!drag.moved && Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) < 8) return;
     drag.moved = true;
     const point = canvasPointToWorld(event);
     furniturePlanMarkersRef.current = furniturePlanMarkersRef.current.map((marker) =>
       marker.id === drag.markerId
-        ? clampFurniturePlanMarker({ ...marker, x: point.x - drag.offsetX, y: point.y - drag.offsetY }, WORLD)
+        ? drag.mode === 'resize'
+          ? resizeFurniturePlanMarkerFromHandle(drag.original, point, WORLD)
+          : clampFurniturePlanMarker({ ...marker, x: point.x - drag.offsetX, y: point.y - drag.offsetY }, WORLD)
         : marker,
     );
+    setFurniturePlanMarkers(furniturePlanMarkersRef.current);
   };
 
   const finishFurniturePlanPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -266,8 +296,13 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     furniturePlanDragRef.current = null;
     commitFurniturePlan(
       furniturePlanMarkersRef.current,
-      drag.moved ? '가구 표시의 새 위치를 자동 저장했어요.' : '가구 표시를 선택했어요.',
+      drag.moved
+        ? drag.mode === 'resize'
+          ? '모서리를 끌어 바꾼 가구 크기를 자동 저장했어요.'
+          : '가구 표시의 새 위치를 자동 저장했어요.'
+        : '가구 표시를 선택했어요.',
     );
+    event.currentTarget.style.cursor = 'crosshair';
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
@@ -279,6 +314,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       marker.id === drag.markerId ? drag.original : marker,
     );
     setFurniturePlanMarkers(furniturePlanMarkersRef.current);
+    event.currentTarget.style.cursor = 'crosshair';
   };
 
   const placeFurniturePlanAtPlayer = () => {
@@ -953,7 +989,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                 </Button>
               </header>
               <p id="furniture-plan-help" className="furniture-plan-help">
-                원하는 가구를 고르고 바닥을 누르세요. 보라색 표시는 제안용이며 게임 속 충돌은 바뀌지 않습니다.
+                가구를 고르고 바닥을 누르세요. 본체를 끌면 이동하고, 선택 후 ↘ 손잡이를 끌면 크기가 바뀝니다.
+                보라색 가구는 제안용이며 게임 속 충돌은 바뀌지 않습니다.
               </p>
 
               <fieldset className="furniture-plan-fieldset">

@@ -10,6 +10,7 @@ import {
 import {
   getFurniturePlanDefinition,
   getFurniturePlanFootprint,
+  getFurniturePlanResizeHandle,
 } from './furniture-plan';
 import type {
   CharacterRole,
@@ -111,7 +112,7 @@ export function drawFurniturePlanMarkers(
       ctx.stroke();
     }
     roundedRect(ctx, -marker.w / 2, -marker.h / 2, marker.w, marker.h, 13);
-    ctx.globalAlpha = 0.52;
+    ctx.globalAlpha = 0.82;
     ctx.fillStyle = definition.color;
     ctx.fill();
     ctx.globalAlpha = 1;
@@ -120,12 +121,34 @@ export function drawFurniturePlanMarkers(
     ctx.setLineDash([13, 8]);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#4b2674';
-    ctx.font = '1000 30px system-ui';
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.95;
+    ctx.font = `1000 ${Math.max(24, Math.min(52, marker.w * .46, marker.h * .62))}px system-ui`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('↑', 0, 2);
+    ctx.fillText(definition.icon, 0, 2);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#4b2674';
+    ctx.font = '1000 16px system-ui';
+    ctx.fillText('▲', 0, -marker.h / 2 + 13);
     ctx.restore();
+
+    if (marker.id === selectedId) {
+      const handle = getFurniturePlanResizeHandle(marker);
+      ctx.save();
+      roundedRect(ctx, handle.x - 14, handle.y - 14, 28, 28, 7);
+      ctx.fillStyle = '#fffdf4';
+      ctx.fill();
+      ctx.strokeStyle = '#4b2674';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.fillStyle = '#4b2674';
+      ctx.font = '1000 18px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('↘', handle.x, handle.y + 1);
+      ctx.restore();
+    }
 
     const caption = `${index + 1}. ${definition.icon} ${marker.label}`;
     ctx.save();

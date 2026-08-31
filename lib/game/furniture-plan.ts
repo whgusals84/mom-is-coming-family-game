@@ -107,6 +107,38 @@ export function pointHitsFurniturePlanMarker(
   );
 }
 
+export function getFurniturePlanResizeHandle(marker: FurniturePlanMarker): Point {
+  const footprint = getFurniturePlanFootprint(marker);
+  return { x: marker.x + footprint.w / 2, y: marker.y + footprint.h / 2 };
+}
+
+export function pointHitsFurniturePlanResizeHandle(
+  point: Point,
+  marker: FurniturePlanMarker,
+  radius = 18,
+) {
+  const handle = getFurniturePlanResizeHandle(marker);
+  return Math.hypot(point.x - handle.x, point.y - handle.y) <= radius;
+}
+
+export function resizeFurniturePlanMarkerFromHandle(
+  marker: FurniturePlanMarker,
+  point: Point,
+  world = { width: 1600, height: 1000 },
+): FurniturePlanMarker {
+  const footprint = getFurniturePlanFootprint(marker);
+  const left = marker.x - footprint.w / 2;
+  const top = marker.y - footprint.h / 2;
+  const width = clamp(point.x - left, MIN_FURNITURE_PLAN_SIZE, MAX_FURNITURE_PLAN_SIZE);
+  const height = clamp(point.y - top, MIN_FURNITURE_PLAN_SIZE, MAX_FURNITURE_PLAN_SIZE);
+  const resizedWidth = setFurniturePlanFootprintSize(marker, 'width', width);
+  const resized = setFurniturePlanFootprintSize(resizedWidth, 'height', height);
+  return clampFurniturePlanMarker(
+    { ...resized, x: left + width / 2, y: top + height / 2 },
+    world,
+  );
+}
+
 type ViewTransform = {
   cameraX: number;
   cameraY: number;
