@@ -171,6 +171,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let blockedHintUntil = 0;
     let nextBumpEffect = 0;
     let playerOnSofa = false;
+    let nearbyRestingRole: 'mom' | 'brother' | 'dad' | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
     let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: Math.min(devicePixelRatio || 1, 2) };
@@ -478,6 +479,23 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         }
         playerOnSofa = nowOnSofa;
 
+        if (!isChase) {
+          const restingFamily = [
+            { role: 'mom' as const, point: FAMILY_RESTING_POSITIONS.mom, line: '저리 가…' },
+            { role: 'dad' as const, point: FAMILY_RESTING_POSITIONS.dad, line: '아빠가 지켜줄게.' },
+            { role: 'brother' as const, point: FAMILY_RESTING_POSITIONS.brother, line: '응양응양…' },
+          ];
+          const closest = restingFamily
+            .filter((family) => distance(player, family.point) < 110)
+            .sort((a, b) => distance(player, a.point) - distance(player, b.point))[0];
+          if (closest && closest.role !== nearbyRestingRole) {
+            nearbyRestingRole = closest.role;
+            addBubble(closest.role, closest.line, now, 2.8);
+          } else if (!closest) {
+            nearbyRestingRole = null;
+          }
+        }
+
         if (isChase && mom.active) {
           if (now > mom.nextLoseCheck) {
             mom.nextLoseCheck = now + 5 + Math.random() * 3;
@@ -609,8 +627,16 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.font = `1000 ${effect.text.length <= 2 ? 36 : 30}px system-ui`; ctx.textAlign = 'center'; ctx.lineWidth = 7; ctx.strokeStyle = '#fffdf4'; ctx.strokeText(effect.text, 0, 0); ctx.fillStyle = effect.color; ctx.fillText(effect.text, 0, 0); ctx.restore();
       }
       for (const bubble of bubbles) {
-        const at = bubble.role === 'player' ? player : bubble.role === 'mom' ? mom : bubble.role === 'brother' ? brother : dad;
-        if (bubble.role !== 'mom' || mom.active) drawSpeech(ctx, at, bubble.text, bubble.role === 'mom' ? '#ffd7d0' : bubble.role === 'dad' ? '#fff0ad' : '#fffdf4');
+        const at = bubble.role === 'player'
+          ? player
+          : !isChase
+            ? FAMILY_RESTING_POSITIONS[bubble.role]
+            : bubble.role === 'mom'
+              ? mom
+              : bubble.role === 'brother'
+                ? brother
+                : dad;
+        if (bubble.role !== 'mom' || mom.active || !isChase) drawSpeech(ctx, at, bubble.text, bubble.role === 'mom' ? '#ffd7d0' : bubble.role === 'dad' ? '#fff0ad' : '#fffdf4');
       }
       ctx.restore();
 
@@ -640,7 +666,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
               ? '🛋️ 소파 위 스피드 UP! 엄마는 소파를 돌아와요'
             : isChase
               ? (nearby ? `E · ${nearby.label}` : (!dad.collected ? '집을 돌아다니는 아빠에게 가까이 가세요!' : '아빠와 형도 집 안을 돌아다니고 있어요'))
-              : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
+              : nearbyRestingRole
+                ? '💤 자는 가족이 잠꼬대하는 중…'
+                : '집을 자유롭게 둘러보세요 · 자는 가족에게 가까이 가보세요',
           itemText: itemTextUntil > now ? itemText : '', dashReady: clamp(1 - (player.dashCooldownUntil - now) / 1.35, 0, 1),
           health: Math.floor(health), maxHealth: HEALTH_RULES.max, recovering: passiveRecoveryActive,
           recoveryLabel: health >= HEALTH_RULES.max
