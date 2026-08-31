@@ -43,6 +43,9 @@ export type HudState = {
   prompt: string;
   itemText: string;
   dashReady: number;
+  combo: number;
+  comboSeconds: number;
+  decoyCharges: number;
   health: number;
   maxHealth: number;
   recoveryLabel: string;
@@ -55,4 +58,7 @@ export type GameResult = {
   accidents: number;
   closeCalls: number;
   missionDone: boolean;
+  maxCombo: number;
+  decoysUsed: number;
+  familyTitle: string;
 };

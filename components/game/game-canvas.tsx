@@ -79,6 +79,7 @@ type FamilyTaskState = {
 type NearbyFamily = { role: FamilyRole; name: string; busyLabel: string | null };
 type DoorState = { id: string; closedUntil: number };
 type HouseEventState = { kind: HouseEventKind; startedAt: number; until: number };
+type FootprintDecoy = Point & { until: number };
 
 const DIRECTION_CONTROLS = new Set<DirectionControl>(['left', 'right', 'up', 'down']);
 
@@ -107,6 +108,7 @@ const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
   mission: { kind: 'survive', title: '엄마에게 60초 동안 잡히지 않기', target: 60, progress: 0, done: false },
   prompt: '집 안을 둘러보는 중…', itemText: '', dashReady: 1,
+  combo: 0, comboSeconds: 0, decoyCharges: 0,
   health: HEALTH_RULES.max, maxHealth: HEALTH_RULES.max, recoveryLabel: '체력 가득', recovering: false,
 };
 
@@ -125,6 +127,16 @@ function formatTime(value: number) {
   const min = Math.floor(value / 60).toString().padStart(2, '0');
   const sec = Math.floor(value % 60).toString().padStart(2, '0');
   return `${min}:${sec}`;
+}
+
+function familyTitle(accidents: number, closeCalls: number, maxCombo: number, decoysUsed: number, missionDone: boolean, elapsed: number) {
+  if (maxCombo >= 6) return '전설의 연속 장난왕';
+  if (decoysUsed >= 3) return '양말 미끼 작전 사령관';
+  if (closeCalls >= 5) return '엄마 레이더 회피왕';
+  if (accidents >= 10) return '우리 집 사고 제조기';
+  if (missionDone) return '오늘의 비밀 미션 요원';
+  if (elapsed >= 120) return '거실 마라톤 국가대표';
+  return '발 빠른 집안 탐험가';
 }
 
 export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, onOpenHow, onOpenCharacters, onOpenCollection }: GameCanvasProps) {
@@ -242,6 +254,12 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     const doorStates = new Map<string, DoorState>(CLOSABLE_DOORS.map((door) => [door.id, { id: door.id, closedUntil: 0 }]));
     let houseEvent: HouseEventState | null = null;
     let nextHouseEvent = Infinity;
+    let comboCount = 0;
+    let comboUntil = 0;
+    let maxCombo = 0;
+    let decoyCharges = 0;
+    let decoysUsed = 0;
+    let footprintDecoy: FootprintDecoy | null = null;
     let nearbyFamilyKey = '';
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
@@ -330,9 +348,20 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         mom.lostUntil = Math.max(mom.lostUntil, now + 3.8); addEffect(player.x, player.y, available.effect, '#5d76bf', now);
         addBubble('player', '숨만 잘 쉬자…', now); return;
       }
-      score += available.points; accidents += 1; makeAngry(available.rage, now);
+      comboCount = now <= comboUntil ? comboCount + 1 : 1;
+      comboUntil = now + 7;
+      maxCombo = Math.max(maxCombo, comboCount);
+      const comboMultiplier = Math.min(3, 1 + (comboCount - 1) * .5);
+      const comboPoints = Math.round(available.points * comboMultiplier);
+      score += comboPoints; accidents += 1; makeAngry(available.rage, now);
       if (available.metric) counters[available.metric] += 1;
       addEffect(available.x, available.y, available.effect, '#ed5b45', now, 1.4);
+      if (comboCount >= 2) addEffect(player.x, player.y - 42, `${comboCount} COMBO ×${comboMultiplier.toFixed(1)}`, '#ffb72d', now, 1.25);
+      if (comboCount % 3 === 0 && decoyCharges < 2) {
+        decoyCharges += 1;
+        itemText = '🧦 가짜 발자국 미끼 충전! 다음 대시에 자동 설치'; itemTextUntil = now + 3.2;
+        addEffect(player.x, player.y - 66, '미끼 +1', '#7556b5', now, 1.35);
+      }
       addBubble('player', pick(LINES.player), now); shakeUntil = now + .28; shakePower = 5; beep('alert');
       if (!mom.active && mom.chaseAt > now + 1.6) mom.chaseAt = now + 1.6;
       updateMission(now);
@@ -341,6 +370,13 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     const tryDash = (now: number) => {
       if (now < player.dashCooldownUntil || player.hiddenUntil > now) return;
       player.dashUntil = now + .2; player.dashCooldownUntil = now + 1.35; beep('dash');
+      if (decoyCharges > 0 && mom.active) {
+        decoyCharges -= 1; decoysUsed += 1;
+        footprintDecoy = { x: player.x, y: player.y, until: now + 4.2 };
+        mom.path = []; mom.pathAt = 0;
+        addEffect(player.x, player.y, '가짜 발자국!', '#7556b5', now, 1.25);
+        itemText = '👣 엄마가 가짜 발자국을 따라가는 중!'; itemTextUntil = now + 2.6;
+      }
       if (mom.active && distance(player, mom) < 112 && distance(player, mom) > 40) {
         score += 250; counters.closeCall += 1; addEffect(player.x, player.y, 'NICE!', '#ffdc4f', now, 1.2); beep('nice'); updateMission(now);
       }
@@ -561,7 +597,11 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
       running = false; stopNocturne(); caughtAt = now; beep('caught'); alertText = '엄마에게 잡혔다!'; alertUntil = now + 2;
       if (!resultSent) {
         resultSent = true;
-        onGameOver({ score: Math.floor(score), elapsed: now - gameStartedAt, accidents, closeCalls: counters.closeCall, missionDone: mission.done });
+        const elapsed = now - gameStartedAt;
+        onGameOver({
+          score: Math.floor(score), elapsed, accidents, closeCalls: counters.closeCall, missionDone: mission.done,
+          maxCombo, decoysUsed, familyTitle: familyTitle(accidents, counters.closeCall, maxCombo, decoysUsed, mission.done, elapsed),
+        });
       }
     };
 
@@ -806,6 +846,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
           let target: Point;
           if (houseEvent?.kind === 'doorbell' && houseEvent.until > now) target = LANDMARKS.entrance;
           else if (mom.distractedUntil > now) target = LANDMARKS.tv;
+          else if (footprintDecoy && footprintDecoy.until > now) target = footprintDecoy;
           else if (player.hiddenUntil > now || mom.lostUntil > now) target = mom.lastSeen;
           else { target = player; mom.lastSeen = { x: player.x, y: player.y }; }
 
@@ -828,6 +869,11 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
               mom.x = beforeMomMove.x; mom.y = beforeMomMove.y; mom.moving = false;
             }
           }
+          if (footprintDecoy && footprintDecoy.until > now && distance(mom, footprintDecoy) < 40) {
+            const fooledAt = footprintDecoy;
+            footprintDecoy = null; mom.lostUntil = Math.max(mom.lostUntil, now + 1.8); mom.path = []; mom.pathAt = 0;
+            addEffect(fooledAt.x, fooledAt.y, '엄마가 속았다!', '#7556b5', now, 1.4); addBubble('mom', '어라? 발자국만 있네?', now, 2.5); beep('nice');
+          }
           const gap = distance(player, mom);
           if (gap < 96) nearMom = true;
           if (nearMom && gap > 145) { nearMom = false; score += 180; counters.closeCall += 1; addEffect(player.x, player.y, 'NICE!', '#ffdc4f', now); updateMission(now); }
@@ -836,6 +882,8 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         }
 
         if (isChase) {
+          if (comboCount > 0 && now > comboUntil) comboCount = 0;
+          if (footprintDecoy && now > footprintDecoy.until) footprintDecoy = null;
           if (houseEvent && now >= houseEvent.until) houseEvent = null;
           if (!houseEvent && now >= nextHouseEvent) triggerHouseEvent(pick(HOUSE_EVENT_KINDS), now);
           if (!brotherTasking) moveRoamingNpc(brother, dad, 108, now, dt);
@@ -926,6 +974,20 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
             ctx.beginPath(); ctx.arc(LANDMARKS.entrance.x, LANDMARKS.entrance.y, 24 + ring * 20 + (eventAge * 18) % 18, -.9, .9); ctx.stroke();
           }
         }
+        ctx.restore();
+      }
+
+      if (footprintDecoy && footprintDecoy.until > now) {
+        ctx.save(); ctx.fillStyle = '#7556b5'; ctx.globalAlpha = .64 + Math.sin(now * 7) * .12;
+        for (let step = 0; step < 4; step += 1) {
+          const side = step % 2 === 0 ? -1 : 1;
+          ctx.beginPath();
+          ctx.ellipse(footprintDecoy.x + side * 8, footprintDecoy.y + 22 - step * 15, 6, 10, side * .18, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#fff3a8'; ctx.strokeStyle = '#4d386f'; ctx.lineWidth = 2;
+        roundedRect(ctx, footprintDecoy.x - 16, footprintDecoy.y - 56, 32, 22, 8); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#4d386f'; ctx.font = '900 15px system-ui'; ctx.textAlign = 'center'; ctx.fillText('🧦', footprintDecoy.x, footprintDecoy.y - 40);
         ctx.restore();
       }
 
@@ -1106,6 +1168,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
                 ? '💤 자는 가족이 잠꼬대하는 중…'
                 : '집을 자유롭게 둘러보세요 · 자는 가족에게 가까이 가보세요',
           itemText: itemTextUntil > now ? itemText : '', dashReady: clamp(1 - (player.dashCooldownUntil - now) / 1.35, 0, 1),
+          combo: comboCount, comboSeconds: comboCount > 0 ? Math.max(0, comboUntil - now) : 0, decoyCharges,
           health: Math.floor(health), maxHealth: HEALTH_RULES.max, recovering: passiveRecoveryActive,
           recoveryLabel: health >= HEALTH_RULES.max
             ? '체력 가득'
@@ -1236,6 +1299,12 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
             <small>{Math.floor(hud.mission.progress)} / {hud.mission.target}</small>
           </aside>
           <div className="mom-status">{hud.momMoodLabel}</div>
+          {(hud.combo >= 2 || hud.decoyCharges > 0) && (
+            <div className="trick-status" aria-label="장난 콤보와 가짜 발자국 미끼">
+              {hud.combo >= 2 && <strong>🔥 {hud.combo} 콤보 <small>{hud.comboSeconds.toFixed(1)}초</small></strong>}
+              {hud.decoyCharges > 0 && <span>🧦 미끼 ×{hud.decoyCharges} · 다음 DASH</span>}
+            </div>
+          )}
           <output className="item-toast" aria-live="polite" aria-atomic="true">{hud.itemText}</output>
         </>
       )}

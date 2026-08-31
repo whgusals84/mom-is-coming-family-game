@@ -13,7 +13,10 @@ function formatTime(value: number) {
   return `${Math.floor(value / 60).toString().padStart(2, '0')}:${Math.floor(value % 60).toString().padStart(2, '0')}`;
 }
 
-const EMPTY_RESULT: GameResult = { score: 0, elapsed: 0, accidents: 0, closeCalls: 0, missionDone: false };
+const EMPTY_RESULT: GameResult = {
+  score: 0, elapsed: 0, accidents: 0, closeCalls: 0, missionDone: false,
+  maxCombo: 0, decoysUsed: 0, familyTitle: '발 빠른 집안 탐험가',
+};
 const OUTFITS: ReadonlyArray<{ id: PlayerOutfit; name: string; icon: string; requiredScore: number; description: string }> = [
   { id: 'basic', name: '기본 스타일', icon: '🙂', requiredScore: 0, description: '언제나 편한 기본 복장' },
   { id: 'cap', name: '파란 모자', icon: '🧢', requiredScore: 1000, description: '최고 기록 1,000점 달성' },
@@ -111,7 +114,7 @@ export function GameApp() {
           <div className="info-heading"><span>게임 방법</span><h2>사고 치고, 튀어!</h2><p>체력은 100! 엄마에게 닿으면 35가 줄고, 거리를 오래 벌리거나 세면대·아빠 아이템으로 회복할 수 있어요.</p></div>
           <div className="how-grid">
             <article><b>01</b><span className="how-icon">🏃</span><h3>방향키로 달려요</h3><p>키보드의 ↑ ↓ ← → 방향키로 가구 사이를 누비세요. 모바일은 화면 방향키로 움직여요.</p></article>
-            <article><b>02</b><span className="how-icon">💥</span><h3>E로 장난쳐요</h3><p>반짝이는 장소 근처에서 E를 누르면 점수와 분노도가 함께 올라갑니다.</p></article>
+            <article><b>02</b><span className="how-icon">💥</span><h3>E로 콤보 장난!</h3><p>7초 안에 장난을 이어가면 점수가 최대 3배! 3콤보마다 다음 대시에 가짜 발자국 미끼가 설치돼요.</p></article>
             <article><b>03</b><span className="how-icon">⚡</span><h3>Space로 대시!</h3><p>엄마 바로 앞에서 대시로 빠져나오면 NICE 보너스를 받아요.</p></article>
             <article><b>04</b><span className="how-icon">💚</span><h3>체력을 회복해요</h3><p>엄마와 거리를 8초 유지하면 자동 회복! 세면대의 물과 아빠표 비타민 주스도 찾아보세요.</p></article>
           </div>
@@ -176,13 +179,14 @@ export function GameApp() {
           <div className="caught-stamp">체력 0!</div>
           <h2 id="gameover-title" ref={gameOverTitleRef} tabIndex={-1}>결국 엄마에게 잡혔다!</h2>
           <p>체력을 모두 써버렸다. 잠깐 쉬고 다시 도전!</p>
+          <div className="family-title"><span>오늘 가족이 붙여준 칭호</span><strong>🏅 {result.familyTitle}</strong></div>
           <div className="result-grid">
             <div><span>생존시간</span><strong>{formatTime(result.elapsed)}</strong></div>
             <div><span>사고친 횟수</span><strong>{result.accidents}회</strong></div>
             <div className="result-score"><span>최종 점수</span><strong>{result.score.toLocaleString()}점</strong></div>
             <div><span>최고 기록</span><strong>{highScore.toLocaleString()}점</strong></div>
           </div>
-          <div className="result-tags"><span>NICE {result.closeCalls}회</span><span>{result.missionDone ? '미션 성공 ✓' : '미션 다음 기회!'}</span></div>
+          <div className="result-tags"><span>최대 콤보 {result.maxCombo}</span><span>미끼 성공 {result.decoysUsed}회</span><span>NICE {result.closeCalls}회</span><span>{result.missionDone ? '미션 성공 ✓' : '미션 다음 기회!'}</span></div>
           <Button className="primary-cta" onClick={() => showGame(true)}>다시 하기</Button>
           <Button variant="ghost" onClick={() => showGame(false)}>집을 다시 둘러보기</Button>
         </section>
