@@ -25,6 +25,7 @@ import {
   clampFurniturePlanMarker,
   createFurniturePlanMarker,
   ensureEditableLivingTableMarker,
+  findFurniturePlanMarkerAtPoint,
   getFurniturePlanDefinition,
   getFurniturePlanFootprint,
   pointHitsFurniturePlanResizeHandle,
@@ -120,6 +121,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const furniturePlanPlayerRef = useRef<Point>({ ...LANDMARKS.playerSpawn });
   const furniturePlanDragRef = useRef<FurniturePlanDrag | null>(null);
   const furniturePlanLoadedRef = useRef(false);
+  const furniturePlanPlacementArmedRef = useRef(false);
   const [soundOn, setSoundOn] = useState(true);
   const [phase, setPhase] = useState<GamePhase>(initialPhase);
   const [hud, setHud] = useState(INITIAL_HUD);
@@ -129,12 +131,19 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const [furniturePlanMarkers, setFurniturePlanMarkers] = useState<FurniturePlanMarker[]>([]);
   const [selectedFurniturePlanMarkerId, setSelectedFurniturePlanMarkerId] = useState<string | null>(null);
   const [furniturePlanStatus, setFurniturePlanStatus] = useState('가구를 고르고 집 바닥을 눌러 표시하세요.');
+  const [furniturePlanPlacementArmed, setFurniturePlanPlacementArmed] = useState(false);
+
+  const setFurniturePlanPlacement = (armed: boolean) => {
+    furniturePlanPlacementArmedRef.current = armed;
+    setFurniturePlanPlacementArmed(armed);
+  };
 
   const beginChase = () => {
     unlockGameAudio();
     furniturePlanModeRef.current = false;
     setFurniturePlanMode(false);
     setFurniturePlanPanelOpen(false);
+    setFurniturePlanPlacement(false);
     phaseRef.current = 'chase';
     setPhase('chase');
   };
@@ -187,6 +196,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     furniturePlanModeRef.current = true;
     setFurniturePlanMode(true);
     setFurniturePlanPanelOpen(true);
+    setFurniturePlanPlacement(false);
     setFurniturePlanStatus('표시용 가구를 고른 뒤 집 바닥을 누르세요. 게임 충돌에는 아직 반영되지 않아요.');
   };
 
@@ -195,6 +205,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     furniturePlanDragRef.current = null;
     setFurniturePlanMode(false);
     setFurniturePlanPanelOpen(false);
+    setFurniturePlanPlacement(false);
     selectFurniturePlanMarker(null);
   };
 
@@ -208,7 +219,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     furniturePlanToolRef.current = kind;
     setFurniturePlanTool(kind);
     selectFurniturePlanMarker(null);
-    setFurniturePlanStatus(`${definition.icon} ${definition.label} 선택됨 · 원하는 바닥을 누르세요.`);
+    setFurniturePlanPlacement(true);
+    setFurniturePlanStatus(`${definition.icon} ${definition.label} 1개 추가 준비 · 원하는 바닥을 누르세요.`);
     if (window.matchMedia('(max-width: 680px)').matches) setFurniturePlanPanelOpen(false);
   };
 
@@ -240,18 +252,27 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     event.preventDefault();
     const point = canvasPointToWorld(event);
-    const hitPadding = 22 / furniturePlanCameraRef.current.zoom;
+    const hitPadding = (event.pointerType === 'touch' ? 16 : 7) / furniturePlanCameraRef.current.zoom;
     const selectedMarker = furniturePlanMarkersRef.current.find(
       (item) => item.id === selectedFurniturePlanMarkerRef.current,
     );
     const resizeSelected = selectedMarker
       ? pointHitsFurniturePlanResizeHandle(point, selectedMarker, 24 / furniturePlanCameraRef.current.zoom)
       : false;
-    let marker = [...furniturePlanMarkersRef.current]
-      .reverse()
-      .find((item) => pointHitsFurniturePlanMarker(point, item, hitPadding));
+    let marker = findFurniturePlanMarkerAtPoint(furniturePlanMarkersRef.current, point, hitPadding);
     if (resizeSelected) marker = selectedMarker;
-    if (!marker) marker = addFurniturePlanMarkerAt(point) ?? undefined;
+    if (!marker) {
+      if (!furniturePlanPlacementArmedRef.current) {
+        selectFurniturePlanMarker(null);
+        setFurniturePlanStatus('빈 바닥에서는 가구가 생기지 않아요. 기존 가구를 누르거나 추가할 가구를 먼저 고르세요.');
+        event.currentTarget.style.cursor = 'crosshair';
+        return;
+      }
+      marker = addFurniturePlanMarkerAt(point) ?? undefined;
+      setFurniturePlanPlacement(false);
+    } else if (!resizeSelected) {
+      setFurniturePlanPlacement(false);
+    }
     if (!marker) return;
     selectFurniturePlanMarker(marker.id);
     furniturePlanDragRef.current = {
@@ -330,6 +351,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
   const placeFurniturePlanAtPlayer = () => {
     const marker = addFurniturePlanMarkerAt(furniturePlanPlayerRef.current);
+    if (marker) setFurniturePlanPlacement(false);
     if (marker && window.matchMedia('(max-width: 680px)').matches) setFurniturePlanPanelOpen(false);
   };
 
@@ -391,9 +413,12 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
   const clearFurniturePlan = () => {
     if (!furniturePlanMarkersRef.current.length) return;
-    if (!window.confirm('표시한 가구 위치를 모두 지울까요? 이 작업은 되돌릴 수 없어요.')) return;
-    commitFurniturePlan([], '가구 표시를 모두 지웠어요.');
-    selectFurniturePlanMarker(null);
+    if (!window.confirm('추가한 가구 표시를 모두 지울까요? 기존 테이블은 유지됩니다.')) return;
+    const originalTable = furniturePlanMarkersRef.current.find(
+      (marker) => marker.id === EDITABLE_LIVING_TABLE_PLAN_ID,
+    );
+    commitFurniturePlan(originalTable ? [originalTable] : [], '추가한 가구 표시를 모두 지웠어요. 기존 테이블은 유지됩니다.');
+    selectFurniturePlanMarker(originalTable?.id ?? null);
   };
 
   const exportFurniturePlan = async () => {
@@ -1010,19 +1035,20 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                 </Button>
               </header>
               <p id="furniture-plan-help" className="furniture-plan-help">
-                가구를 고르고 바닥을 누르세요. 본체를 끌면 이동하고, 선택 후 ↘ 손잡이를 끌면 크기가 바뀝니다.
+                기존 가구는 직접 눌러 선택하세요. 새 가구는 종류를 고른 뒤 빈 바닥을 한 번 누를 때만 추가됩니다.
+                본체를 끌면 이동하고, 선택 후 ↘ 손잡이를 끌면 크기가 바뀝니다.
                 보라색 가구는 제안용이며 게임 속 충돌은 바뀌지 않습니다.
               </p>
 
               <fieldset className="furniture-plan-fieldset">
-                <legend>표시할 가구</legend>
+                <legend>새 가구 1개 추가</legend>
                 <div className="furniture-plan-catalog">
                   {FURNITURE_PLAN_CATALOG.map((item) => (
                     <button
                       key={item.kind}
                       type="button"
-                      className={furniturePlanTool === item.kind ? 'is-selected' : ''}
-                      aria-pressed={furniturePlanTool === item.kind}
+                      className={furniturePlanPlacementArmed && furniturePlanTool === item.kind ? 'is-selected' : ''}
+                      aria-pressed={furniturePlanPlacementArmed && furniturePlanTool === item.kind}
                       onClick={() => chooseFurniturePlanTool(item.kind)}
                     >
                       <span>{item.icon}</span>{item.label}
@@ -1045,7 +1071,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                         type="button"
                         className={selectedFurniturePlanMarkerId === marker.id ? 'is-selected' : ''}
                         aria-pressed={selectedFurniturePlanMarkerId === marker.id}
-                        onClick={() => selectFurniturePlanMarker(marker.id)}
+                        onClick={() => {
+                          setFurniturePlanPlacement(false);
+                          selectFurniturePlanMarker(marker.id);
+                        }}
                       >
                         {index + 1}. {getFurniturePlanDefinition(marker.kind).icon} {marker.label || getFurniturePlanDefinition(marker.kind).label}
                       </button>
@@ -1129,7 +1158,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           {furniturePlanMode && !furniturePlanPanelOpen && (
             <output className="furniture-plan-active-tool">
               <button type="button" onClick={() => setFurniturePlanPanelOpen(true)} aria-label="가구 배치 도구 열기">
-                {activeFurniturePlanDefinition.icon} {activeFurniturePlanDefinition.label} · 바닥을 탭하세요
+                {furniturePlanPlacementArmed
+                  ? `${activeFurniturePlanDefinition.icon} ${activeFurniturePlanDefinition.label} 1개 · 바닥을 탭하세요`
+                  : selectedFurniturePlanMarker
+                    ? `${getFurniturePlanDefinition(selectedFurniturePlanMarker.kind).icon} ${selectedFurniturePlanMarker.label} · 끌어서 이동`
+                    : '가구를 누르거나 새 가구를 고르세요'}
               </button>
               <button type="button" onClick={closeFurniturePlanMode}>완료</button>
             </output>

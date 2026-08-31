@@ -4,6 +4,7 @@ import {
   createFurniturePlanMarker,
   EDITABLE_LIVING_TABLE_PLAN_ID,
   ensureEditableLivingTableMarker,
+  findFurniturePlanMarkerAtPoint,
   furniturePlanWorldToScreen,
   getFurniturePlanFootprint,
   getFurniturePlanResizeHandle,
@@ -41,6 +42,14 @@ assert.equal(withOriginalTable[0].id, EDITABLE_LIVING_TABLE_PLAN_ID);
 assert.deepEqual(getFurniturePlanFootprint(withOriginalTable[0]), { w: 90, h: 60 });
 assert.deepEqual({ x: withOriginalTable[0].x, y: withOriginalTable[0].y }, { x: 490, y: 380 });
 assert.equal(ensureEditableLivingTableMarker(withOriginalTable, { x: 0, y: 0, w: 1, h: 1 }).length, 2);
+
+const overlapping = [
+  createFurniturePlanMarker('table', { x: 500, y: 500 }, 'wide-table'),
+  createFurniturePlanMarker('plant', { x: 540, y: 500 }, 'near-plant'),
+];
+assert.equal(findFurniturePlanMarkerAtPoint(overlapping, { x: 540, y: 500 }, 20)?.id, 'near-plant');
+assert.equal(findFurniturePlanMarkerAtPoint(overlapping, { x: 505, y: 500 }, 20)?.id, 'wide-table');
+assert.equal(findFurniturePlanMarkerAtPoint(overlapping, { x: 700, y: 700 }, 20), undefined);
 
 const resizeHandle = getFurniturePlanResizeHandle(rotated);
 assert.equal(pointHitsFurniturePlanResizeHandle(resizeHandle, rotated), true);

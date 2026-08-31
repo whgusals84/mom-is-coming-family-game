@@ -128,6 +128,27 @@ export function pointHitsFurniturePlanMarker(
   );
 }
 
+export function findFurniturePlanMarkerAtPoint(
+  items: readonly FurniturePlanMarker[],
+  point: Point,
+  padding = 0,
+): FurniturePlanMarker | undefined {
+  const candidates = items
+    .map((marker, index) => ({
+      marker,
+      index,
+      exact: pointHitsFurniturePlanMarker(point, marker, 0),
+      distance: Math.hypot(point.x - marker.x, point.y - marker.y),
+    }))
+    .filter(({ marker }) => pointHitsFurniturePlanMarker(point, marker, padding))
+    .sort((a, b) =>
+      Number(b.exact) - Number(a.exact)
+      || a.distance - b.distance
+      || b.index - a.index,
+    );
+  return candidates.length ? candidates[0].marker : undefined;
+}
+
 export function getFurniturePlanResizeHandle(marker: FurniturePlanMarker): Point {
   const footprint = getFurniturePlanFootprint(marker);
   return { x: marker.x + footprint.w / 2, y: marker.y + footprint.h / 2 };
