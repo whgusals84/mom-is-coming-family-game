@@ -24,6 +24,7 @@ import {
   LINES,
   LIVING_PIANO,
   LIVING_SOFA,
+  LIVING_TURTLE_HOME,
   MISSIONS,
   NPC_SPOTS,
   WORLD,
@@ -79,9 +80,19 @@ type NearbyFamily = { role: FamilyRole; name: string; busyLabel: string | null }
 type DoorState = { id: string; closedUntil: number };
 type HouseEventState = { kind: HouseEventKind; startedAt: number; until: number };
 type FootprintDecoy = Point & { until: number };
+type TurtleWaterPhase = 'gather' | 'carryToBath' | 'release' | 'washHome' | 'washTurtles' | 'carryHome';
+type TurtleWaterState = { helper: FamilyRole; phase: TurtleWaterPhase; phaseUntil: number; nextEffectAt: number; repathAt: number };
+type TurtleWaterUi = { canStart: boolean; active: boolean; helperName: string; phaseLabel: string };
 
 const PLAYER_MOVE_OPTIONS = { ignoreKinds: ['sofa'] } as const;
 const SOFA_SPEED_MULTIPLIER = 1.38;
+const TURTLE_HOME_APPROACH = { x: LIVING_TURTLE_HOME.x + LIVING_TURTLE_HOME.w / 2, y: LIVING_TURTLE_HOME.y - 42 };
+const TURTLE_BATH_APPROACH = { x: 797, y: 824 };
+const TURTLE_WATER_PHASE_LABELS: Record<TurtleWaterPhase, string> = {
+  gather: '동행 가족이 거북이 집으로 오는 중', carryToBath: '함께 거북이 집을 욕조로 옮기는 중',
+  release: '거북이 두 마리를 욕조에 풀어주는 중', washHome: '빈 거북이 집을 깨끗하게 씻는 중',
+  washTurtles: '거북이 등껍질을 살살 씻는 중', carryHome: '둘이 거북이 집을 제자리로 옮기는 중',
+};
 
 const FAMILY_NAMES: Record<FamilyRole, string> = { mom: '엄마', brother: '형', dad: '아빠' };
 const FAMILY_TASKS: Record<FamilyTaskKind, { label: string; icon: string; effect: string; duration: number }> = {
@@ -147,10 +158,12 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
   const soundRef = useRef(true);
   const phaseRef = useRef<GamePhase>(initialPhase);
   const familyTaskCommandRef = useRef<FamilyTaskCommand | null>(null);
+  const turtleWaterCommandRef = useRef<FamilyRole | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [phase, setPhase] = useState<GamePhase>(initialPhase);
   const [hud, setHud] = useState(INITIAL_HUD);
   const [nearbyFamily, setNearbyFamily] = useState<NearbyFamily | null>(null);
+  const [turtleWaterUi, setTurtleWaterUi] = useState<TurtleWaterUi>({ canStart: false, active: false, helperName: '', phaseLabel: '' });
 
   const beginChase = () => {
     unlockGameAudio();
@@ -162,6 +175,10 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     if (!nearbyFamily || nearbyFamily.busyLabel) return;
     unlockGameAudio();
     familyTaskCommandRef.current = { role: nearbyFamily.role, kind };
+  };
+  const requestTurtleWater = (helper: FamilyRole) => {
+    unlockGameAudio();
+    turtleWaterCommandRef.current = helper;
   };
 
   useEffect(() => {
@@ -260,6 +277,9 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     let decoyCharges = 0;
     let decoysUsed = 0;
     let footprintDecoy: FootprintDecoy | null = null;
+    let turtleWater: TurtleWaterState | null = null;
+    let turtleWaterReadyAt = 0;
+    let turtleWaterUiKey = '';
     let nearbyFamilyKey = '';
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
@@ -324,6 +344,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
 
     const doInteraction = (now: number) => {
       if (phaseRef.current !== 'chase') return;
+      if (turtleWater) return;
       if (toggleNearbyDoor(now)) return;
       const available = interactions
         .filter((i) => distance(player, i) < 78 && !i.used && now - i.lastUsed >= i.cooldown)
@@ -368,6 +389,9 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     };
 
     const tryDash = (now: number) => {
+      if (turtleWater) {
+        itemText = '🐢 거북이 집을 들고 대시하면 위험해요!'; itemTextUntil = now + 2.2; return;
+      }
       if (now < player.dashCooldownUntil || player.hiddenUntil > now) return;
       player.dashUntil = now + .2; player.dashCooldownUntil = now + 1.35; beep('dash');
       if (decoyCharges > 0 && mom.active) {
@@ -495,7 +519,108 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
 
     const actorFor = (role: FamilyRole): Mom | Npc => role === 'mom' ? mom : role === 'brother' ? brother : dad;
 
+    const startTurtleWater = (helper: FamilyRole, now: number) => {
+      if (turtleWater || now < turtleWaterReadyAt) return;
+      const actor = actorFor(helper);
+      familyTasks[helper] = null;
+      if (phaseRef.current === 'explore' && !awakeInExplore[helper]) {
+        const wake = FAMILY_WAKE_POSITIONS[helper]; actor.x = wake.x; actor.y = wake.y; awakeInExplore[helper] = true;
+      }
+      actor.path = findPath(actor, TURTLE_HOME_APPROACH, actor.r + 3); actor.moving = false;
+      turtleWater = { helper, phase: 'gather', phaseUntil: 0, nextEffectAt: now, repathAt: now + 1.1 };
+      if (helper === 'mom') { mom.active = false; mom.mood = 'calm'; mom.pathAt = Infinity; }
+      else if ('targetAt' in actor) actor.targetAt = Infinity;
+      if (houseEvent?.kind === 'turtles') houseEvent = null;
+      addBubble(helper, helper === 'mom' ? '좋아, 같이 물갈이하자.' : helper === 'dad' ? '아빠가 반대쪽을 들게!' : '내가 거북이 집 들게!', now, 3.2);
+      itemText = `🐢 ${FAMILY_NAMES[helper]}와 거북이 물갈이 시작!`; itemTextUntil = now + 3;
+      addEffect(TURTLE_HOME_APPROACH.x, TURTLE_HOME_APPROACH.y, '물갈이 출발!', '#45a996', now, 1.4); beep('item');
+    };
+
+    const moveHelperTo = (actor: Mom | Npc, target: Point, state: TurtleWaterState, now: number, dt: number) => {
+      if (distance(actor, target) < 34) { actor.moving = false; return true; }
+      if (now >= state.repathAt || actor.path.length === 0) {
+        actor.path = findPath(actor, target, actor.r + 3); state.repathAt = now + 1.1;
+      }
+      let waypoint = actor.path[0];
+      if (waypoint && distance(actor, waypoint) < 20) { actor.path.shift(); waypoint = actor.path[0]; }
+      actor.moving = false;
+      if (waypoint) {
+        const vx = waypoint.x - actor.x; const vy = waypoint.y - actor.y; const length = Math.hypot(vx, vy) || 1;
+        if (vx < -.1) actor.facing = -1; else if (vx > .1) actor.facing = 1;
+        actor.moving = moveCircle(actor, vx / length * 112 * dt, vy / length * 112 * dt, actor.r).moved;
+      }
+      return false;
+    };
+
+    const finishTurtleWater = (state: TurtleWaterState, now: number) => {
+      const actor = actorFor(state.helper);
+      actor.path = []; actor.moving = false;
+      if (state.helper === 'mom') {
+        rage = clamp(rage - 15, 0, 100); mom.pathAt = 0;
+        if (gameStartedAt !== null) { mom.active = true; mom.mood = 'chase'; }
+      } else {
+        if ('targetAt' in actor) actor.targetAt = now + 1;
+        if (state.helper === 'dad') health = restoreHealth(health, 20);
+        else player.speedUntil = Math.max(player.speedUntil, now + 5);
+      }
+      if (gameStartedAt !== null) score += 900;
+      turtleWater = null; turtleWaterReadyAt = now + 24;
+      addEffect(TURTLE_HOME_APPROACH.x, TURTLE_HOME_APPROACH.y, gameStartedAt !== null ? '물갈이 완료! +900' : '물갈이 완료!', '#36a878', now, 1.7);
+      addBubble(state.helper, '깨끗해졌다! 거북이들도 좋아하네.', now, 3.2);
+      itemText = state.helper === 'mom' ? '🐢 물갈이 완료 · 엄마 분노도 -15' : state.helper === 'dad' ? '🐢 물갈이 완료 · 아빠가 체력 +20' : '🐢 물갈이 완료 · 형과 5초 스피드 UP';
+      itemTextUntil = now + 4; beep('nice');
+    };
+
+    const updateTurtleWater = (now: number, dt: number) => {
+      const state = turtleWater;
+      if (!state) return;
+      const actor = actorFor(state.helper);
+      if (state.phase === 'gather') {
+        const helperArrived = moveHelperTo(actor, TURTLE_HOME_APPROACH, state, now, dt);
+        if (helperArrived && distance(player, TURTLE_HOME_APPROACH) < 92) {
+          state.phase = 'carryToBath'; actor.path = [];
+          addBubble(state.helper, '하나, 둘! 욕조까지 같이 들자!', now, 3);
+          addEffect(TURTLE_HOME_APPROACH.x, TURTLE_HOME_APPROACH.y, '영차!', '#ef8b45', now, 1.2); beep('item');
+        }
+        return;
+      }
+      if (state.phase === 'carryToBath' || state.phase === 'carryHome') {
+        const followX = player.x - player.facing * 54; const followY = player.y + 4;
+        const followAmount = Math.min(1, dt * 11);
+        actor.x += (followX - actor.x) * followAmount; actor.y += (followY - actor.y) * followAmount;
+        actor.facing = player.facing; actor.moving = player.moving;
+        const target = state.phase === 'carryToBath' ? TURTLE_BATH_APPROACH : TURTLE_HOME_APPROACH;
+        if (distance(player, target) < 58) {
+          if (state.phase === 'carryHome') { finishTurtleWater(state, now); return; }
+          state.phase = 'release'; state.phaseUntil = now + 2.2; state.nextEffectAt = now;
+          player.x = TURTLE_BATH_APPROACH.x - 40; player.y = TURTLE_BATH_APPROACH.y;
+          actor.x = TURTLE_BATH_APPROACH.x + 40; actor.y = TURTLE_BATH_APPROACH.y; actor.moving = false;
+          addBubble(state.helper, '거북이들아, 욕조에서 잠깐 놀자!', now, 3); beep('item');
+        }
+        return;
+      }
+      actor.moving = false;
+      if (now >= state.nextEffectAt) {
+        state.nextEffectAt = now + .72;
+        const text = state.phase === 'release' ? '🐢 풍덩!' : state.phase === 'washHome' ? '🫧 뽀득뽀득!' : '🧽 살살살살!';
+        addEffect(TURTLE_BATH_APPROACH.x, TURTLE_BATH_APPROACH.y + 18, text, '#45a996', now, .7);
+      }
+      if (now < state.phaseUntil) return;
+      if (state.phase === 'release') {
+        state.phase = 'washHome'; state.phaseUntil = now + 3.2;
+        addBubble(state.helper, '나는 집을 잡을게, 같이 닦자!', now, 2.8);
+      } else if (state.phase === 'washHome') {
+        state.phase = 'washTurtles'; state.phaseUntil = now + 3.2;
+        addBubble(state.helper, '이번엔 등껍질을 살살 씻자.', now, 2.8);
+      } else {
+        state.phase = 'carryHome'; actor.path = [];
+        addBubble(state.helper, '깨끗해졌어! 다시 제자리로 옮기자.', now, 3);
+        addEffect(TURTLE_BATH_APPROACH.x, TURTLE_BATH_APPROACH.y, '다시 영차!', '#ef8b45', now, 1.2); beep('nice');
+      }
+    };
+
     const startFamilyTask = (command: FamilyTaskCommand, now: number) => {
+      if (turtleWater?.helper === command.role) return;
       const actor = actorFor(command.role);
       const task = FAMILY_TASKS[command.kind];
       if (phaseRef.current === 'explore' && !awakeInExplore[command.role]) {
@@ -754,7 +879,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
 
       if (running) {
         if (isChase && !introDone && elapsed > 1.6) triggerIntro(now);
-        if (isChase && !mom.active && now >= mom.chaseAt) {
+        if (isChase && !mom.active && turtleWater?.helper !== 'mom' && now >= mom.chaseAt) {
           mom.active = true; mom.mood = 'chase'; alertText = '엄마가 온다!'; alertUntil = now + 2; shakeUntil = now + .8; shakePower = 14;
           addBubble('mom', '너 거기 안 서?!', now, 3); beep('alert');
         }
@@ -764,6 +889,8 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         let dy = Number(keys.has('ArrowDown')) - Number(keys.has('ArrowUp')) + touch.moveY;
         if (touch.dash) { touch.dash = false; tryDash(now); }
         if (touch.interact) { touch.interact = false; doInteraction(now); }
+        const turtleWorkLocked = turtleWater && !['gather', 'carryToBath', 'carryHome'].includes(turtleWater.phase);
+        if (turtleWorkLocked) { dx = 0; dy = 0; }
         const length = Math.hypot(dx, dy);
         if (length > 1) { dx /= length; dy /= length; }
         const wantsMove = length > .02 && player.hiddenUntil <= now;
@@ -788,7 +915,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
           }
         }
         if (isChase) {
-          const bumpedFamily = [brother, dad].find((family) => distance(player, family) < player.r + family.r + 3);
+          const bumpedFamily = [brother, dad].find((family) => turtleWater?.helper !== family.kind && distance(player, family) < player.r + family.r + 3);
           if (bumpedFamily) {
             player.x = playerBeforeMove.x; player.y = playerBeforeMove.y; player.moving = false;
             handleFamilyBump(bumpedFamily, now);
@@ -811,6 +938,12 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         else stopNocturne();
         playerNearPiano = nowNearPiano;
 
+        const pendingTurtleWater = turtleWaterCommandRef.current;
+        if (pendingTurtleWater) {
+          turtleWaterCommandRef.current = null;
+          startTurtleWater(pendingTurtleWater, now);
+        }
+
         const pendingTask = familyTaskCommandRef.current;
         if (pendingTask) {
           familyTaskCommandRef.current = null;
@@ -819,6 +952,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         const momTasking = updateFamilyTask('mom', now, dt);
         const brotherTasking = updateFamilyTask('brother', now, dt);
         const dadTasking = updateFamilyTask('dad', now, dt);
+        updateTurtleWater(now, dt);
 
         if (!isChase) {
           const restingFamily = [
@@ -887,9 +1021,9 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
           if (comboCount > 0 && now > comboUntil) comboCount = 0;
           if (footprintDecoy && now > footprintDecoy.until) footprintDecoy = null;
           if (houseEvent && now >= houseEvent.until) houseEvent = null;
-          if (!houseEvent && now >= nextHouseEvent) triggerHouseEvent(pick(HOUSE_EVENT_KINDS), now);
-          if (!brotherTasking) moveRoamingNpc(brother, dad, 108, now, dt);
-          if (!dadTasking) moveRoamingNpc(dad, brother, 92, now, dt);
+          if (!turtleWater && !houseEvent && now >= nextHouseEvent) triggerHouseEvent(pick(HOUSE_EVENT_KINDS), now);
+          if (!brotherTasking && turtleWater?.helper !== 'brother') moveRoamingNpc(brother, dad, 108, now, dt);
+          if (!dadTasking && turtleWater?.helper !== 'dad') moveRoamingNpc(dad, brother, 92, now, dt);
           const safeForRecovery = mom.active && distance(player, mom) >= HEALTH_RULES.safeDistance && player.invulnerableUntil <= now;
           if (health < HEALTH_RULES.max && safeForRecovery) {
             safeSince ??= now;
@@ -910,12 +1044,12 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
           } else {
             safeSince = null; passiveRecoveryActive = false;
           }
-          if (now > nextBrother) triggerBrother(now);
-          if (now > nextDad) {
+          if (!turtleWater && now > nextBrother) triggerBrother(now);
+          if (!turtleWater && now > nextDad) {
             if (dad.collected) offerDadItem(now);
             else nextDad = now + 6;
           }
-          if (!dad.collected && distance(player, dad) < 80) grantDadItem(now);
+          if (!turtleWater && !dad.collected && distance(player, dad) < 80) grantDadItem(now);
           score += dt * 10;
           updateMission(now);
         }
@@ -936,7 +1070,32 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
       if (staticMapContext) ctx.drawImage(staticMap, 0, 0, WORLD.width, WORLD.height);
       else drawMap(ctx, 0, false);
-      drawMapAnimations(ctx, now);
+      const turtleHomeAway = Boolean(turtleWater && turtleWater.phase !== 'gather');
+      drawMapAnimations(ctx, now, turtleHomeAway);
+      if (turtleHomeAway) {
+        ctx.save(); ctx.fillStyle = '#e7bd82'; ctx.strokeStyle = 'rgba(132,87,51,.35)'; ctx.lineWidth = 2;
+        roundedRect(ctx, LIVING_TURTLE_HOME.x - 2, LIVING_TURTLE_HOME.y - 2, LIVING_TURTLE_HOME.w + 4, LIVING_TURTLE_HOME.h + 4, 10); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#7b604d'; ctx.font = '850 10px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText('물갈이 중 · 자리 비움', LIVING_TURTLE_HOME.x + LIVING_TURTLE_HOME.w / 2, LIVING_TURTLE_HOME.y + 32); ctx.restore();
+      }
+
+      if (turtleWater && ['release', 'washHome', 'washTurtles'].includes(turtleWater.phase)) {
+        const washPulse = Math.sin(now * 5) * 2;
+        ctx.save();
+        for (let turtle = 0; turtle < 2; turtle += 1) {
+          const x = 781 + turtle * 29 + Math.sin(now * 1.6 + turtle) * 5;
+          const y = 875 + Math.cos(now * 1.4 + turtle) * 3;
+          ctx.fillStyle = turtle ? '#7a9f49' : '#5e9b57'; ctx.beginPath(); ctx.ellipse(x, y, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#9fc96f'; ctx.beginPath(); ctx.arc(x + 10, y, 4, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = '#c8eee3'; ctx.strokeStyle = '#356e67'; ctx.lineWidth = 3;
+        roundedRect(ctx, 837, 805 + washPulse, 70, 48, 10); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,.75)';
+        for (let bubble = 0; bubble < 5; bubble += 1) {
+          ctx.beginPath(); ctx.arc(850 + bubble * 13, 812 - (bubble % 2) * 8 + washPulse, 3 + bubble % 2, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
 
       for (const door of CLOSABLE_DOORS) {
         const state = doorStates.get(door.id);
@@ -1085,6 +1244,18 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         }
         ctx.restore();
       }
+      if (turtleWater && (turtleWater.phase === 'carryToBath' || turtleWater.phase === 'carryHome')) {
+        const helper = actorFor(turtleWater.helper);
+        const centerX = (player.x + helper.x) / 2; const centerY = (player.y + helper.y) / 2 - 2;
+        ctx.save();
+        ctx.strokeStyle = '#5c4031'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(player.x, player.y - 18); ctx.lineTo(centerX - 27, centerY); ctx.moveTo(helper.x, helper.y - 18); ctx.lineTo(centerX + 27, centerY); ctx.stroke();
+        ctx.fillStyle = '#c8eee3'; ctx.strokeStyle = '#356e67'; ctx.lineWidth = 3;
+        roundedRect(ctx, centerX - 31, centerY - 20, 62, 42, 10); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#5e9b57'; ctx.beginPath(); ctx.ellipse(centerX - 12, centerY, 9, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#7a9f49'; ctx.beginPath(); ctx.ellipse(centerX + 13, centerY + 5, 9, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff8d5'; ctx.font = '900 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('영차!', centerX, centerY - 27); ctx.restore();
+      }
       for (const effect of effects) {
         const life = (now - effect.born) / (effect.until - effect.born);
         ctx.save(); ctx.globalAlpha = 1 - life; ctx.translate(effect.x, effect.y - life * 45); ctx.rotate(-.08 + Math.sin(effect.born * 9) * .08);
@@ -1106,7 +1277,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
               : bubble.role === 'brother'
                 ? brother
                 : dad;
-        if (bubble.role !== 'mom' || mom.active || !isChase) drawSpeech(ctx, at, bubble.text, bubble.role === 'mom' ? '#ffd7d0' : bubble.role === 'dad' ? '#fff0ad' : '#fffdf4');
+        if (bubble.role !== 'mom' || mom.active || turtleWater?.helper === 'mom' || !isChase) drawSpeech(ctx, at, bubble.text, bubble.role === 'mom' ? '#ffd7d0' : bubble.role === 'dad' ? '#fff0ad' : '#fffdf4');
       }
       ctx.restore();
 
@@ -1132,6 +1303,12 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         lastHud = now;
         const nearby = isChase ? interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0] : undefined;
         const nearbyDoor = isChase ? closestDoor() : undefined;
+        const canStartTurtleWater = !turtleWater && now >= turtleWaterReadyAt && distance(player, TURTLE_HOME_APPROACH) < 112;
+        const nextTurtleUi: TurtleWaterUi = turtleWater
+          ? { canStart: false, active: true, helperName: FAMILY_NAMES[turtleWater.helper], phaseLabel: TURTLE_WATER_PHASE_LABELS[turtleWater.phase] }
+          : { canStart: canStartTurtleWater, active: false, helperName: '', phaseLabel: '' };
+        const nextTurtleUiKey = `${nextTurtleUi.canStart}:${nextTurtleUi.active}:${nextTurtleUi.helperName}:${nextTurtleUi.phaseLabel}`;
+        if (turtleWaterUiKey !== nextTurtleUiKey) { turtleWaterUiKey = nextTurtleUiKey; setTurtleWaterUi(nextTurtleUi); }
         const familyCandidates = (['mom', 'brother', 'dad'] as const).map((role) => {
           const point = !isChase && !awakeInExplore[role] ? FAMILY_RESTING_POSITIONS[role] : actorFor(role);
           return { role, point, gap: distance(player, point) };
@@ -1151,8 +1328,18 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         }
         setHud({
           score: Math.floor(score), elapsed, rage, rageLabel: rageLabel(rage), momMood: mom.active ? mom.mood : (isChase ? 'suspicious' : 'calm'),
-          momMoodLabel: mom.active ? moodLabel(mom.mood) : (isChase ? '🤨 소파에서 일어나는 중' : '😐 쉬는 중'), mission: { ...mission },
-          prompt: blockedHintUntil > now
+          momMoodLabel: turtleWater?.helper === 'mom' ? '🐢 물갈이 도와주는 중' : mom.active ? moodLabel(mom.mood) : (isChase ? '🤨 소파에서 일어나는 중' : '😐 쉬는 중'), mission: { ...mission },
+          prompt: turtleWater
+            ? turtleWater.phase === 'gather'
+              ? `🐢 ${FAMILY_NAMES[turtleWater.helper]}이 오면 거북이 집 앞에서 기다리세요`
+              : turtleWater.phase === 'carryToBath'
+                ? '🐢 둘이 들고 중앙 욕실의 욕조까지 이동하세요'
+                : turtleWater.phase === 'carryHome'
+                  ? '🐢 깨끗한 거북이 집을 거실의 원래 자리로 옮기세요'
+                  : `🫧 ${TURTLE_WATER_PHASE_LABELS[turtleWater.phase]}…`
+            : canStartTurtleWater
+              ? '🐢 거북이 물갈이를 같이 할 가족을 골라보세요'
+            : blockedHintUntil > now
             ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
             : playerOnSofa
               ? '🛋️ 소파 위 스피드 UP! 엄마는 소파를 돌아와요'
@@ -1256,7 +1443,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
       {phase === 'explore' && (
         <header className="explore-toolbar">
           <span className="explore-mode">자유 탐험</span>
-          <Button className="explore-start" onClick={beginChase}><Gamepad2 /> 게임 시작</Button>
+          <Button className="explore-start" onClick={beginChase} disabled={turtleWaterUi.active}><Gamepad2 /> {turtleWaterUi.active ? '물갈이 중' : '게임 시작'}</Button>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button className="explore-menu-trigger" size="icon" aria-label="탐험 메뉴" title="탐험 메뉴" />}>
               <MoreHorizontal />
@@ -1319,7 +1506,26 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         </>
       )}
 
-      {nearbyFamily && (
+      {turtleWaterUi.canStart && (
+        <section className="turtle-water-panel turtle-water-picker" aria-label="거북이 물갈이 동행 가족 선택">
+          <div className="turtle-water-heading"><span>🐢 가족 협동 이벤트</span><strong>누구와 같이 물갈이할까요?</strong><small>둘이 집을 들고 욕조까지 갔다가 다시 제자리에 놓아요.</small></div>
+          <div className="turtle-helper-actions">
+            <button type="button" onClick={() => requestTurtleWater('mom')}><span>👩</span><strong>엄마</strong><small>완료 시 분노 -15</small></button>
+            <button type="button" onClick={() => requestTurtleWater('dad')}><span>👓</span><strong>아빠</strong><small>완료 시 체력 +20</small></button>
+            <button type="button" onClick={() => requestTurtleWater('brother')}><span>🐇</span><strong>형</strong><small>완료 시 속도 UP</small></button>
+          </div>
+        </section>
+      )}
+
+      {turtleWaterUi.active && (
+        <aside className="turtle-water-panel turtle-water-progress" aria-live="polite">
+          <span>🐢 {turtleWaterUi.helperName}와 함께</span>
+          <strong>{turtleWaterUi.phaseLabel}</strong>
+          <div className="turtle-step-track"><i /><i /><i /><i /><i /></div>
+        </aside>
+      )}
+
+      {nearbyFamily && !turtleWaterUi.canStart && !turtleWaterUi.active && (
         <section className="family-request-panel" aria-label={`${nearbyFamily.name}에게 부탁하기`}>
           <div className="family-request-heading">
             <span>가까운 가족</span>
@@ -1338,7 +1544,7 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
           </div>
         </section>
       )}
-      <div className={`interaction-prompt ${nearbyFamily ? 'with-family-request' : ''}`}>{hud.prompt}</div>
+      <div className={`interaction-prompt ${nearbyFamily || turtleWaterUi.canStart || turtleWaterUi.active ? 'with-family-request' : ''}`}>{hud.prompt}</div>
       <div className="dash-meter" aria-label="대시 충전"><span style={{ transform: `scaleX(${hud.dashReady})` }} /></div>
 
       <div className="mobile-controls" aria-label="터치 조작">

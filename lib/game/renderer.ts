@@ -89,9 +89,9 @@ export function drawMap(
   drawDoorMat(ctx, LANDMARKS.entrance.x, LANDMARKS.entrance.y + 28);
 }
 
-export function drawMapAnimations(ctx: CanvasRenderingContext2D, time: number) {
+export function drawMapAnimations(ctx: CanvasRenderingContext2D, time: number, hideHabitatTurtles = false) {
   const habitat = FURNITURE.find((item) => item.kind === 'turtleHabitat');
-  if (!habitat) return;
+  if (!habitat || hideHabitatTurtles) return;
   drawTinyTurtle(
     ctx,
     habitat.x + 23 + Math.sin(time * 1.3) * 3,
