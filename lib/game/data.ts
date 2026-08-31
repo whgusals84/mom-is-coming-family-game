@@ -116,6 +116,16 @@ export const PASSAGES: Rect[] = [
   { x: 728, y: 766, w: 120, h: 24, label: '중앙 욕실 문', kind: 'passage' },
 ];
 
+// 닫혔을 때 통로 전체를 잠시 막는 방문. 정적 지도에는 포함하지 않아
+// 평소 경로 탐색 비용은 그대로 유지한다.
+export const CLOSABLE_DOORS = [
+  { id: 'brother', x: 876, y: 165, w: 24, h: 170, label: '형 방문' },
+  { id: 'bath-left', x: 556, y: 580, w: 24, h: 96, label: '욕실 문' },
+  { id: 'dad', x: 560, y: 676, w: 156, h: 24, label: '아빠 방문' },
+  { id: 'player', x: 856, y: 650, w: 24, h: 120, label: '내 방문' },
+  { id: 'bath-center', x: 728, y: 766, w: 120, h: 24, label: '중앙 욕실 문' },
+] as const;
+
 export const LIVING_SOFA: Rect = {
   x: 310,
   y: 50,
@@ -467,6 +477,28 @@ export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
     y: 900,
     label: '아빠 옷장 뒤에 숨기',
     effect: '안 보이지?',
+    points: 0,
+    rage: 0,
+    cooldown: 9,
+    hide: true,
+  },
+  {
+    id: 'hide-brother',
+    x: 1080,
+    y: 190,
+    label: '인형 더미 뒤에 숨기',
+    effect: '인형인 척…',
+    points: 0,
+    rage: 0,
+    cooldown: 9,
+    hide: true,
+  },
+  {
+    id: 'hide-bathroom',
+    x: 490,
+    y: 625,
+    label: '욕실 문 뒤에 숨기',
+    effect: '조용히…',
     points: 0,
     rage: 0,
     cooldown: 9,

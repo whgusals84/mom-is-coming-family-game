@@ -4,16 +4,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { unlockGameAudio } from '@/lib/game/audio';
-import type { GameResult } from '@/lib/game/types';
+import type { GameResult, HouseEventKind, PlayerOutfit } from '@/lib/game/types';
 import { GameCanvas } from './game-canvas';
 
-type Screen = 'game' | 'how' | 'characters' | 'gameover';
+type Screen = 'game' | 'how' | 'characters' | 'collection' | 'gameover';
 
 function formatTime(value: number) {
   return `${Math.floor(value / 60).toString().padStart(2, '0')}:${Math.floor(value % 60).toString().padStart(2, '0')}`;
 }
 
 const EMPTY_RESULT: GameResult = { score: 0, elapsed: 0, accidents: 0, closeCalls: 0, missionDone: false };
+const OUTFITS: ReadonlyArray<{ id: PlayerOutfit; name: string; icon: string; requiredScore: number; description: string }> = [
+  { id: 'basic', name: '기본 스타일', icon: '🙂', requiredScore: 0, description: '언제나 편한 기본 복장' },
+  { id: 'cap', name: '파란 모자', icon: '🧢', requiredScore: 1000, description: '최고 기록 1,000점 달성' },
+  { id: 'bunny', name: '토끼 머리띠', icon: '🐰', requiredScore: 3000, description: '최고 기록 3,000점 달성' },
+  { id: 'cape', name: '번개 망토', icon: '⚡', requiredScore: 6000, description: '최고 기록 6,000점 달성' },
+];
+const EVENT_COLLECTION: ReadonlyArray<{ id: HouseEventKind; name: string; icon: string; hint: string }> = [
+  { id: 'doorbell', name: '수상한 초인종', icon: '🔔', hint: '엄마가 현관을 확인해요' },
+  { id: 'blackout', name: '갑작스런 정전', icon: '💡', hint: '엄마가 잠시 길을 잃어요' },
+  { id: 'turtles', name: '거북이 대탈출', icon: '🐢', hint: '작은 거북이 둘이 산책해요' },
+  { id: 'vacuum', name: '청소기 출동', icon: '🤖', hint: '로봇청소기가 거실을 누벼요' },
+  { id: 'crumbs', name: '과자 부스러기', icon: '🍪', hint: '엄마 분노가 조금 올라가요' },
+  { id: 'remote', name: '사라진 리모컨', icon: '📺', hint: '아빠가 다시 나타나요' },
+];
 
 export function GameApp() {
   const [screen, setScreen] = useState<Screen>('game');
@@ -21,12 +35,16 @@ export function GameApp() {
   const [startImmediately, setStartImmediately] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [result, setResult] = useState<GameResult>(EMPTY_RESULT);
+  const [playerOutfit, setPlayerOutfit] = useState<PlayerOutfit>('basic');
+  const [discoveredEvents, setDiscoveredEvents] = useState<HouseEventKind[]>([]);
   const gameOverTitleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     try {
       const saved = Number(localStorage.getItem('mom-is-coming-high-score') ?? 0);
       if (Number.isFinite(saved)) setHighScore(saved);
+      const savedOutfit = localStorage.getItem('mom-is-coming-outfit') as PlayerOutfit | null;
+      if (OUTFITS.some((outfit) => outfit.id === savedOutfit)) setPlayerOutfit(savedOutfit!);
     } catch { /* Storage may be unavailable in restricted/private browser modes. */ }
     if ('serviceWorker' in navigator) {
       void navigator.serviceWorker.register('sw.js').catch(() => undefined);
@@ -52,6 +70,18 @@ export function GameApp() {
     });
     setTimeout(() => setScreen('gameover'), 520);
   }, []);
+  const openCollection = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('mom-is-coming-events') ?? '[]') as HouseEventKind[];
+      setDiscoveredEvents(saved.filter((kind) => EVENT_COLLECTION.some((event) => event.id === kind)));
+    } catch { setDiscoveredEvents([]); }
+    setScreen('collection');
+  };
+  const chooseOutfit = (outfit: PlayerOutfit, requiredScore: number) => {
+    if (highScore < requiredScore) return;
+    setPlayerOutfit(outfit);
+    try { localStorage.setItem('mom-is-coming-outfit', outfit); } catch { /* Keep the in-memory choice. */ }
+  };
 
   if (screen === 'game') {
     return (
@@ -59,9 +89,11 @@ export function GameApp() {
         key={run}
         highScore={highScore}
         initialPhase={startImmediately ? 'chase' : 'explore'}
+        playerOutfit={playerOutfit}
         onGameOver={handleGameOver}
         onOpenHow={() => setScreen('how')}
         onOpenCharacters={() => setScreen('characters')}
+        onOpenCollection={openCollection}
       />
     );
   }
@@ -98,6 +130,44 @@ export function GameApp() {
             <article className="character-card dad-card"><div className="character-portrait"><img src="assets/characters/dad/idle.png" alt="안경을 쓰고 선물 주머니를 든 아빠 캐릭터" /></div><div><span>지원 NPC</span><h3>아빠</h3><p>“난 아무것도 못 봤다.”</p></div></article>
           </div>
           <Button className="primary-cta compact" onClick={() => showGame(true)}>가족 만나러 가기</Button>
+        </section>
+      )}
+
+      {screen === 'collection' && (
+        <section className="info-panel collection-panel">
+          <Button className="back-button" variant="ghost" onClick={() => showGame(false)}><ArrowLeft /> 집으로 돌아가기</Button>
+          <div className="info-heading"><span>나만의 수집함</span><h2>의상과 집안 사건</h2><p>최고 기록으로 의상을 열고, 게임 중 만난 랜덤 사건을 도감에 기록해요.</p></div>
+          <div className="collection-section">
+            <h3>내 의상</h3>
+            <div className="outfit-grid">
+              {OUTFITS.map((outfit) => {
+                const unlocked = highScore >= outfit.requiredScore;
+                const selected = playerOutfit === outfit.id;
+                return (
+                  <button key={outfit.id} type="button" className={`outfit-card ${selected ? 'is-selected' : ''}`} disabled={!unlocked} onClick={() => chooseOutfit(outfit.id, outfit.requiredScore)}>
+                    <span className="outfit-icon">{unlocked ? outfit.icon : '🔒'}</span>
+                    <strong>{outfit.name}</strong>
+                    <small>{selected ? '착용 중' : unlocked ? '눌러서 착용' : outfit.description}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="collection-section">
+            <h3>집안 사건 도감 <small>{discoveredEvents.length}/{EVENT_COLLECTION.length}</small></h3>
+            <div className="event-codex">
+              {EVENT_COLLECTION.map((event) => {
+                const discovered = discoveredEvents.includes(event.id);
+                return (
+                  <article key={event.id} className={discovered ? 'is-found' : 'is-hidden'}>
+                    <span>{discovered ? event.icon : '❔'}</span>
+                    <div><strong>{discovered ? event.name : '아직 못 만난 사건'}</strong><small>{discovered ? event.hint : '게임을 오래 플레이해 보세요'}</small></div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+          <Button className="primary-cta compact" onClick={() => showGame(false)}>이 의상으로 집에 가기</Button>
         </section>
       )}
 

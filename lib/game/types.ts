@@ -3,6 +3,8 @@ export type Rect = { x: number; y: number; w: number; h: number; label?: string;
 
 export type CharacterRole = 'player' | 'mom' | 'brother' | 'dad';
 export type MomMood = 'calm' | 'suspicious' | 'chase' | 'search' | 'extreme';
+export type PlayerOutfit = 'basic' | 'cap' | 'bunny' | 'cape';
+export type HouseEventKind = 'doorbell' | 'blackout' | 'turtles' | 'vacuum' | 'crumbs' | 'remote';
 
 export type Interaction = {
   id: string;

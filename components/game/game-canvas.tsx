@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Gamepad2, HelpCircle, MoreHorizontal, Trophy, UsersRound, Volume2, VolumeX } from 'lucide-react';
+import { Gamepad2, HelpCircle, MoreHorizontal, Sparkles, Trophy, UsersRound, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { playGameTone, startNocturne, stopNocturne, unlockGameAudio, type GameTone } from '@/lib/game/audio';
 import {
+  CLOSABLE_DOORS,
   FAMILY_RESTING_POSITIONS,
   FAMILY_TASK_TARGETS,
   FAMILY_WAKE_POSITIONS,
@@ -28,18 +29,20 @@ import {
   WORLD,
 } from '@/lib/game/data';
 import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
-import { clamp, distance, findPath, moveCircle, pointInRect } from '@/lib/game/map';
+import { circleHitsRect, clamp, distance, findPath, moveCircle, pointInRect } from '@/lib/game/map';
 import { drawCharacter, drawMap, drawMapAnimations, drawMarker, drawRestingCharacter, drawSpeech, roundedRect } from '@/lib/game/renderer';
 import { SpriteBank } from '@/lib/game/sprites';
-import type { GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
+import type { GameResult, HouseEventKind, HudState, Interaction, Mission, MomMood, PlayerOutfit, Point } from '@/lib/game/types';
 
 type GamePhase = 'explore' | 'chase';
 type GameCanvasProps = {
   highScore: number;
   initialPhase: GamePhase;
+  playerOutfit: PlayerOutfit;
   onGameOver: (result: GameResult) => void;
   onOpenHow: () => void;
   onOpenCharacters: () => void;
+  onOpenCollection: () => void;
 };
 
 type Actor = Point & { r: number; moving: boolean; facing: 1 | -1 };
@@ -74,6 +77,8 @@ type FamilyTaskState = {
   repathAt: number;
 };
 type NearbyFamily = { role: FamilyRole; name: string; busyLabel: string | null };
+type DoorState = { id: string; closedUntil: number };
+type HouseEventState = { kind: HouseEventKind; startedAt: number; until: number };
 
 const DIRECTION_CONTROLS = new Set<DirectionControl>(['left', 'right', 'up', 'down']);
 
@@ -87,6 +92,16 @@ const FAMILY_TASKS: Record<FamilyTaskKind, { label: string; icon: string; effect
   tv: { label: 'TV 보기', icon: '📺', effect: '재밌다!', duration: 6.5 },
   turtles: { label: '거북이 밥주기', icon: '🐢', effect: '냠냠!', duration: 5 },
 };
+
+const HOUSE_EVENTS: Record<HouseEventKind, { title: string; icon: string; duration: number }> = {
+  doorbell: { title: '초인종이 울렸다!', icon: '🔔', duration: 6 },
+  blackout: { title: '갑자기 정전!', icon: '💡', duration: 6 },
+  turtles: { title: '거북이가 탈출했다!', icon: '🐢', duration: 9 },
+  vacuum: { title: '로봇청소기 출동!', icon: '🤖', duration: 8 },
+  crumbs: { title: '형이 과자를 흘렸다!', icon: '🍪', duration: 5 },
+  remote: { title: '아빠가 리모컨을 잃어버렸다!', icon: '📺', duration: 6 },
+};
+const HOUSE_EVENT_KINDS = Object.keys(HOUSE_EVENTS) as HouseEventKind[];
 
 const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
@@ -112,7 +127,7 @@ function formatTime(value: number) {
   return `${min}:${sec}`;
 }
 
-export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onOpenCharacters }: GameCanvasProps) {
+export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, onOpenHow, onOpenCharacters, onOpenCollection }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef({ left: false, right: false, up: false, down: false, dash: false, interact: false });
@@ -224,6 +239,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let nearbyRestingRole: 'mom' | 'brother' | 'dad' | null = null;
     const awakeInExplore: Record<FamilyRole, boolean> = { mom: false, brother: false, dad: false };
     const familyTasks: Record<FamilyRole, FamilyTaskState | null> = { mom: null, brother: null, dad: null };
+    const doorStates = new Map<string, DoorState>(CLOSABLE_DOORS.map((door) => [door.id, { id: door.id, closedUntil: 0 }]));
+    let houseEvent: HouseEventState | null = null;
+    let nextHouseEvent = Infinity;
     let nearbyFamilyKey = '';
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
@@ -239,6 +257,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     };
     const addEffect = (x: number, y: number, text: string, color: string, now: number, duration = 1.1) => {
       effects.push({ x, y, text, color, born: now, until: now + duration });
+      if (effects.length > 36) effects.splice(0, effects.length - 36);
     };
     const makeAngry = (amount: number, now: number) => {
       rage = clamp(rage + amount, 0, 100);
@@ -246,6 +265,27 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         mom.extremeUntil = Math.max(mom.extremeUntil, now + 6);
         alertText = '엄마 극대노 모드!'; alertUntil = now + 1.8; shakeUntil = now + .55; shakePower = 10;
       }
+    };
+
+    const closedDoorAt = (point: Point, radius: number, now: number) => CLOSABLE_DOORS.find((door) => {
+      const state = doorStates.get(door.id);
+      return Boolean(state && state.closedUntil > now && circleHitsRect(point.x, point.y, radius, door));
+    });
+    const closestDoor = () => CLOSABLE_DOORS
+      .map((door) => ({ door, gap: distance(player, { x: door.x + door.w / 2, y: door.y + door.h / 2 }) }))
+      .filter(({ gap }) => gap < 82)
+      .sort((a, b) => a.gap - b.gap)[0]?.door;
+    const toggleNearbyDoor = (now: number) => {
+      const door = closestDoor();
+      if (!door) return false;
+      const state = doorStates.get(door.id)!;
+      const wasClosed = state.closedUntil > now;
+      state.closedUntil = wasClosed ? 0 : now + 4.5;
+      if (!wasClosed) { mom.path = []; mom.pathAt = 0; }
+      addEffect(door.x + door.w / 2, door.y + door.h / 2, wasClosed ? '벌컥!' : '쾅!', wasClosed ? '#45a996' : '#ef8b45', now, 1);
+      itemText = wasClosed ? `🚪 ${door.label}을 열었어요` : `🚪 ${door.label}을 4.5초 동안 닫았어요`;
+      itemTextUntil = now + 2.5; beep('item');
+      return true;
     };
 
     const updateMission = (now: number) => {
@@ -266,6 +306,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
     const doInteraction = (now: number) => {
       if (phaseRef.current !== 'chase') return;
+      if (toggleNearbyDoor(now)) return;
       const available = interactions
         .filter((i) => distance(player, i) < 78 && !i.used && now - i.lastUsed >= i.cooldown)
         .sort((a, b) => distance(player, a) - distance(player, b))[0];
@@ -341,6 +382,38 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (item.id === 'remote') { mom.distractedUntil = now + 4.2; mom.pathAt = 0; }
       if (item.id === 'dadChance') mom.stunnedUntil = Math.max(mom.stunnedUntil, now + 3);
       addEffect(dad.x, dad.y, item.icon, '#fff36d', now, 1.3); addBubble('dad', '빨리 가!', now); beep('item'); updateMission(now);
+    };
+
+    const rememberHouseEvent = (kind: HouseEventKind) => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('mom-is-coming-events') ?? '[]') as HouseEventKind[];
+        if (!saved.includes(kind)) localStorage.setItem('mom-is-coming-events', JSON.stringify([...saved, kind]));
+      } catch { /* 도감 저장이 막혀도 게임은 계속 진행한다. */ }
+    };
+    const triggerHouseEvent = (kind: HouseEventKind, now: number) => {
+      const definition = HOUSE_EVENTS[kind];
+      houseEvent = { kind, startedAt: now, until: now + definition.duration };
+      nextHouseEvent = houseEvent.until + 18 + Math.random() * 10;
+      rememberHouseEvent(kind);
+      alertText = `${definition.icon} ${definition.title}`; alertUntil = now + 2.2;
+      itemText = `랜덤 집안 사건 · ${definition.title}`; itemTextUntil = now + 3;
+      if (kind === 'doorbell') {
+        mom.distractedUntil = Math.max(mom.distractedUntil, now + 5.5); mom.pathAt = 0;
+        addBubble('mom', '누구세요?', now, 2.8);
+      } else if (kind === 'blackout') {
+        mom.lostUntil = Math.max(mom.lostUntil, now + 5.5); mom.pathAt = 0;
+        addBubble('player', '불이 꺼졌다! 살금살금…', now, 2.8);
+      } else if (kind === 'crumbs') {
+        makeAngry(6, now); addBubble('brother', '어라? 과자가 쏟아졌네 ㅋㅋ', now, 3);
+      } else if (kind === 'remote') {
+        dad.collected = false; nextDad = now + 7;
+        addBubble('dad', '리모컨이 어디 갔지?', now, 3);
+      } else if (kind === 'turtles') {
+        addBubble('player', '거북이 두 마리가 탈출했다!', now, 3);
+      } else {
+        addBubble('dad', '로봇청소기 지나간다!', now, 2.6);
+      }
+      beep('alert');
     };
 
     const handleFamilyBump = (family: Npc, now: number) => {
@@ -424,7 +497,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (activeTask.phase === 'walking') {
         if (distance(actor, target) < 34) {
           activeTask.phase = 'working';
-          activeTask.workUntil = now + task.duration;
+          activeTask.workUntil = now + task.duration * (role === 'brother' ? .72 : 1);
           activeTask.nextEffectAt = now;
           actor.path = []; actor.moving = false;
           addBubble(role, `${task.label} 하는 중!`, now, 2.2);
@@ -462,9 +535,21 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           }
           const earnedScore = gameStartedAt !== null;
           if (earnedScore) score += 120;
+          if (role === 'mom') {
+            rage = clamp(rage - 12, 0, 100);
+            itemText = `엄마가 기분이 풀렸다 · 분노도 -12`;
+          } else if (role === 'dad') {
+            const beforeHealth = health;
+            health = restoreHealth(health, 18);
+            itemText = `아빠의 비타민 주스 · 체력 +${Math.ceil(health - beforeHealth)}`;
+          } else {
+            player.speedUntil = Math.max(player.speedUntil, now + 4);
+            if (Math.random() < .25) { makeAngry(4, now); itemText = '형이 빨리 끝냈지만 또 장난쳤다!'; }
+            else itemText = '형의 지름길 힌트 · 4초 스피드 UP';
+          }
           addEffect(actor.x, actor.y - 26, earnedScore ? '완료! +120' : '완료!', '#ef8b45', now, 1.25);
           addBubble(role, `${task.label} 끝!`, now, 2.4);
-          itemText = `${FAMILY_NAMES[role]}의 ${task.label} 완료!`; itemTextUntil = now + 2.8;
+          itemTextUntil = now + 3.2;
           beep('nice');
         }
       }
@@ -613,6 +698,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         nextBrother = now + 10;
         nextDad = now + 9;
         nextMomLine = now + 8;
+        nextHouseEvent = now + 12 + Math.random() * 7;
         player.dashUntil = 0;
         player.dashCooldownUntil = 0;
         bubbles = [];
@@ -649,10 +735,14 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         if (player.hiddenUntil <= now) {
           const movement = moveCircle(player, dx * speed * dt, dy * speed * dt, player.r, PLAYER_MOVE_OPTIONS);
           player.moving = wantsMove && movement.moved;
-          if (wantsMove && movement.blocked && !movement.moved && now >= nextBumpEffect) {
+          const blockedByDoor = closedDoorAt(player, player.r, now);
+          if (blockedByDoor) {
+            player.x = playerBeforeMove.x; player.y = playerBeforeMove.y; player.moving = false;
+          }
+          if (wantsMove && ((movement.blocked && !movement.moved) || blockedByDoor) && now >= nextBumpEffect) {
             nextBumpEffect = now + .75;
             blockedHintUntil = now + 1.25;
-            addEffect(player.x + dx * 25, player.y + dy * 25, '툭!', '#6d5142', now, .55);
+            addEffect(player.x + dx * 25, player.y + dy * 25, blockedByDoor ? '문이 닫혔다!' : '툭!', '#6d5142', now, .55);
           }
         }
         if (isChase) {
@@ -714,7 +804,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             }
           }
           let target: Point;
-          if (mom.distractedUntil > now) target = LANDMARKS.tv;
+          if (houseEvent?.kind === 'doorbell' && houseEvent.until > now) target = LANDMARKS.entrance;
+          else if (mom.distractedUntil > now) target = LANDMARKS.tv;
           else if (player.hiddenUntil > now || mom.lostUntil > now) target = mom.lastSeen;
           else { target = player; mom.lastSeen = { x: player.x, y: player.y }; }
 
@@ -731,7 +822,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             const momSpeed = 142 + elapsed * .52 + rage * .48 + (mom.extremeUntil > now ? 88 : 0);
             if (vx < -.1) mom.facing = -1;
             else if (vx > .1) mom.facing = 1;
+            const beforeMomMove = { x: mom.x, y: mom.y };
             mom.moving = moveCircle(mom, vx / vlen * momSpeed * dt, vy / vlen * momSpeed * dt, mom.r).moved;
+            if (closedDoorAt(mom, mom.r, now)) {
+              mom.x = beforeMomMove.x; mom.y = beforeMomMove.y; mom.moving = false;
+            }
           }
           const gap = distance(player, mom);
           if (gap < 96) nearMom = true;
@@ -741,6 +836,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         }
 
         if (isChase) {
+          if (houseEvent && now >= houseEvent.until) houseEvent = null;
+          if (!houseEvent && now >= nextHouseEvent) triggerHouseEvent(pick(HOUSE_EVENT_KINDS), now);
           if (!brotherTasking) moveRoamingNpc(brother, dad, 108, now, dt);
           if (!dadTasking) moveRoamingNpc(dad, brother, 92, now, dt);
           const safeForRecovery = mom.active && distance(player, mom) >= HEALTH_RULES.safeDistance && player.invulnerableUntil <= now;
@@ -791,11 +888,57 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       else drawMap(ctx, 0, false);
       drawMapAnimations(ctx, now);
 
+      for (const door of CLOSABLE_DOORS) {
+        const state = doorStates.get(door.id);
+        if (!state || state.closedUntil <= now) continue;
+        ctx.save();
+        ctx.fillStyle = '#d69a64'; ctx.strokeStyle = '#5b3c2d'; ctx.lineWidth = 4;
+        roundedRect(ctx, door.x, door.y, door.w, door.h, 5); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffe17b';
+        ctx.beginPath(); ctx.arc(door.x + door.w * .68, door.y + door.h * .55, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      if (houseEvent && houseEvent.until > now) {
+        const eventAge = now - houseEvent.startedAt;
+        ctx.save();
+        if (houseEvent.kind === 'turtles') {
+          for (let turtle = 0; turtle < 2; turtle += 1) {
+            const turtleX = 348 + turtle * 48 + Math.sin(eventAge * 1.5 + turtle) * 22;
+            const turtleY = 560 + turtle * 28 + Math.cos(eventAge * 1.25 + turtle) * 16;
+            ctx.fillStyle = '#669e52'; ctx.beginPath(); ctx.ellipse(turtleX, turtleY, 13, 9, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#9fc96f'; ctx.beginPath(); ctx.arc(turtleX + 13, turtleY, 5, 0, Math.PI * 2); ctx.fill();
+          }
+        } else if (houseEvent.kind === 'vacuum') {
+          const vacuumX = 650 + Math.sin(eventAge * 1.7) * 155;
+          const vacuumY = 430 + Math.cos(eventAge * 1.2) * 65;
+          ctx.fillStyle = '#6d6679'; ctx.strokeStyle = '#392b24'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(vacuumX, vacuumY, 19, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#ff6b55'; ctx.beginPath(); ctx.arc(vacuumX, vacuumY, 4, 0, Math.PI * 2); ctx.fill();
+        } else if (houseEvent.kind === 'crumbs') {
+          ctx.fillStyle = '#9c6134';
+          for (let crumb = 0; crumb < 7; crumb += 1) {
+            ctx.beginPath(); ctx.arc(915 + crumb * 13, 515 + (crumb % 3) * 8, 3 + (crumb % 2), 0, Math.PI * 2); ctx.fill();
+          }
+        } else if (houseEvent.kind === 'doorbell') {
+          ctx.strokeStyle = '#ffd548'; ctx.lineWidth = 5; ctx.globalAlpha = .8;
+          for (let ring = 0; ring < 2; ring += 1) {
+            ctx.beginPath(); ctx.arc(LANDMARKS.entrance.x, LANDMARKS.entrance.y, 24 + ring * 20 + (eventAge * 18) % 18, -.9, .9); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
       if (isChase) {
         for (const interaction of interactions) {
           if (interaction.used) continue;
           const ready = now - interaction.lastUsed >= interaction.cooldown;
           if (distance(player, interaction) < 150) drawMarker(ctx, interaction, interaction.label, ready, now);
+        }
+        const door = closestDoor();
+        if (door) {
+          const isClosed = doorStates.get(door.id)!.closedUntil > now;
+          drawMarker(ctx, { x: door.x + door.w / 2, y: door.y + door.h / 2 }, isClosed ? '문 열기' : '문 닫기', true, now);
         }
       }
       if (helpUntil > now && mom.active) {
@@ -852,7 +995,32 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.restore();
       }
       const hitFlash = !reducedMotion && player.invulnerableUntil > now && Math.floor(now * 10) % 2 === 0;
+      if (playerOutfit === 'cape') {
+        ctx.save(); ctx.globalAlpha = player.hiddenUntil > now || hitFlash ? .42 : 1;
+        ctx.translate(player.x, player.y); ctx.scale(player.facing, 1);
+        ctx.fillStyle = '#e84f49'; ctx.strokeStyle = '#792f35'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-15, -57); ctx.lineTo(15, -57); ctx.lineTo(24, -7); ctx.lineTo(-25, -13); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
       drawCharacter(ctx, bank, 'player', player.x, player.y, player.moving, now, 'calm', player.hiddenUntil > now || hitFlash, player.facing, reducedMotion);
+      if (playerOutfit !== 'basic') {
+        ctx.save(); ctx.globalAlpha = player.hiddenUntil > now || hitFlash ? .42 : 1;
+        ctx.translate(player.x, player.y);
+        if (playerOutfit === 'cap') {
+          ctx.fillStyle = '#3a8dc4'; ctx.strokeStyle = '#244b6d'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(0, -72, 19, Math.PI, 0); ctx.lineTo(19, -67); ctx.lineTo(-19, -67); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(player.facing * 15, -66, 17, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        } else if (playerOutfit === 'bunny') {
+          ctx.fillStyle = '#fffdf6'; ctx.strokeStyle = '#6e5260'; ctx.lineWidth = 3;
+          roundedRect(ctx, -19, -104, 13, 34, 7); ctx.fill(); ctx.stroke();
+          roundedRect(ctx, 6, -104, 13, 34, 7); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#f3a9bd'; roundedRect(ctx, -15, -98, 5, 22, 3); ctx.fill(); roundedRect(ctx, 10, -98, 5, 22, 3); ctx.fill();
+        } else if (playerOutfit === 'cape') {
+          ctx.fillStyle = '#ffd94f'; ctx.strokeStyle = '#5e3f2c'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(-4, -47); ctx.lineTo(7, -47); ctx.lineTo(0, -36); ctx.lineTo(8, -36); ctx.lineTo(-6, -19); ctx.lineTo(-1, -32); ctx.lineTo(-9, -32); ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
+      }
       for (const effect of effects) {
         const life = (now - effect.born) / (effect.until - effect.born);
         ctx.save(); ctx.globalAlpha = 1 - life; ctx.translate(effect.x, effect.y - life * 45); ctx.rotate(-.08 + Math.sin(effect.born * 9) * .08);
@@ -878,6 +1046,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       }
       ctx.restore();
 
+      if (houseEvent?.kind === 'blackout' && houseEvent.until > now) {
+        ctx.fillStyle = 'rgba(15,21,33,.34)'; ctx.fillRect(0, 0, resize.width, resize.height);
+      }
+
       if (!running && caughtAt) {
         ctx.fillStyle = `rgba(43,31,28,${Math.min(.7, (now - caughtAt) * 1.5)})`;
         ctx.fillRect(0, 0, resize.width, resize.height);
@@ -895,6 +1067,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (running && now - lastHud > (resize.width <= 980 ? .18 : .12)) {
         lastHud = now;
         const nearby = isChase ? interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0] : undefined;
+        const nearbyDoor = isChase ? closestDoor() : undefined;
         const familyCandidates = (['mom', 'brother', 'dad'] as const).map((role) => {
           const point = !isChase && !awakeInExplore[role] ? FAMILY_RESTING_POSITIONS[role] : actorFor(role);
           return { role, point, gap: distance(player, point) };
@@ -926,7 +1099,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                 ? `${nextNearby.name}: ${nextNearby.busyLabel} 하는 중…`
                 : `${nextNearby.name}에게 부탁할 일을 골라보세요`
             : isChase
-              ? (nearby ? `E · ${nearby.label}` : (!dad.collected ? '집을 돌아다니는 아빠에게 가까이 가세요!' : '아빠와 형도 집 안을 돌아다니고 있어요'))
+              ? (nearbyDoor
+                  ? `E · ${nearbyDoor.label} ${doorStates.get(nearbyDoor.id)!.closedUntil > now ? '열기' : '4.5초 닫기'}`
+                  : nearby ? `E · ${nearby.label}` : (!dad.collected ? '집을 돌아다니는 아빠에게 가까이 가세요!' : '아빠와 형도 집 안을 돌아다니고 있어요'))
               : nearbyRestingRole
                 ? '💤 자는 가족이 잠꼬대하는 중…'
                 : '집을 자유롭게 둘러보세요 · 자는 가족에게 가까이 가보세요',
@@ -957,7 +1132,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       document.removeEventListener('visibilitychange', onVisibilityChange);
       reducedMotionQuery.removeEventListener('change', onReducedMotionChange);
     };
-  }, [onGameOver]);
+  }, [onGameOver, playerOutfit]);
 
   const syncDirections = () => {
     const held = new Set(directionPointersRef.current.values());
@@ -1016,6 +1191,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             <DropdownMenuContent align="end" side="bottom" sideOffset={8} className="explore-popover">
               <DropdownMenuItem onClick={onOpenHow}><HelpCircle /> 게임 방법</DropdownMenuItem>
               <DropdownMenuItem onClick={onOpenCharacters}><UsersRound /> 가족 소개</DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenCollection}><Sparkles /> 의상 · 사건 도감</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSoundOn((value) => { if (!value) unlockGameAudio(); return !value; })}>
                 {soundOn ? <Volume2 /> : <VolumeX />} {soundOn ? '소리 끄기' : '소리 켜기'}
               </DropdownMenuItem>
