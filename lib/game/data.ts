@@ -12,9 +12,9 @@ export const ROOMS: Rect[] = [
   { x: 880, y: 24, w: 520, h: 326, label: '형 방', kind: 'brotherRoom' },
   { x: 820, y: 350, w: 580, h: 280, label: '주방 · 식당', kind: 'kitchen' },
   { x: 190, y: 560, w: 370, h: 120, label: '욕실', kind: 'bathroom' },
-  { x: 560, y: 560, w: 320, h: 140, label: '복도', kind: 'hall' },
+  { x: 560, y: 560, w: 320, h: 210, label: '복도', kind: 'hall' },
   { x: 190, y: 680, w: 530, h: 296, label: '아빠 방', kind: 'dadRoom' },
-  { x: 720, y: 700, w: 140, h: 220, label: '욕실', kind: 'bathroom' },
+  { x: 720, y: 770, w: 140, h: 150, label: '욕실', kind: 'bathroom' },
   { x: 860, y: 630, w: 540, h: 346, label: '내 방', kind: 'playerRoom' },
 ];
 
@@ -45,14 +45,13 @@ export const WALLS: Rect[] = [
   { x: 535, y: 676, w: 25, h: 24 },
   // 아빠 방과 중앙 복도
   { x: 716, y: 676, w: 24, h: 324 },
-  // 내 방 윗벽: 욕조 옆에 보이는 벽의 왼쪽 끝에 작은 120px 방문을 둔다.
-  // 욕실과 맞닿은 세로 벽은 아래까지 이어져 두 공간을 직접 연결하지 않는다.
+  // 내 방 윗벽은 완전히 막고, 방문은 왼쪽 세로 벽의 복도 구간에 둔다.
+  { x: 856, y: 626, w: 548, h: 24 },
   { x: 856, y: 626, w: 24, h: 24 },
-  { x: 1000, y: 626, w: 404, h: 24 },
-  { x: 856, y: 626, w: 24, h: 374 },
+  { x: 856, y: 770, w: 24, h: 230 },
   // 중앙 아래 욕실
-  { x: 716, y: 696, w: 12, h: 24 },
-  { x: 848, y: 696, w: 12, h: 24 },
+  { x: 716, y: 766, w: 12, h: 24 },
+  { x: 848, y: 766, w: 12, h: 24 },
   // 중앙 욕실 아래쪽은 평면도상 외부/설비 공간이라 통과할 수 없다.
   { x: 716, y: 916, w: 144, h: 84 },
 ];
@@ -63,8 +62,8 @@ export const DOORS = [
   { x: 568, y: 580, angle: Math.PI, label: '욕실 문', span: 78 },
   { x: 405, y: 688, angle: Math.PI / 2, label: '욕실 문', span: 82 },
   { x: 560, y: 688, angle: Math.PI / 2, label: '아빠 방 문', span: 86 },
-  { x: 880, y: 638, angle: Math.PI / 2, label: '내 방 문', span: 78 },
-  { x: 728, y: 708, angle: Math.PI / 2, label: '욕실 문', span: 82 },
+  { x: 868, y: 650, angle: 0, label: '내 방 문', span: 78 },
+  { x: 728, y: 778, angle: Math.PI / 2, label: '욕실 문', span: 82 },
 ] as const;
 
 // 벽이 실제로 끊겨 있는 곳과 같은 좌표를 사용한다. 민트색 문턱은 모두 통과 가능하다.
@@ -113,8 +112,8 @@ export const PASSAGES: Rect[] = [
   { x: 556, y: 580, w: 24, h: 96, label: '욕실 문', kind: 'passage' },
   { x: 405, y: 676, w: 130, h: 24, label: '욕실 · 아빠 방', kind: 'passage' },
   { x: 560, y: 676, w: 156, h: 24, label: '복도 · 아빠 방', kind: 'passage' },
-  { x: 880, y: 626, w: 120, h: 24, label: '내 방 문', kind: 'passage' },
-  { x: 728, y: 696, w: 120, h: 24, label: '중앙 욕실 문', kind: 'passage' },
+  { x: 856, y: 650, w: 24, h: 120, label: '내 방 문', kind: 'passage' },
+  { x: 728, y: 766, w: 120, h: 24, label: '중앙 욕실 문', kind: 'passage' },
 ];
 
 export const LIVING_SOFA: Rect = {
@@ -212,7 +211,7 @@ export const FURNITURE: Rect[] = [
   { x: 930, y: 790, w: 125, h: 58, label: '책상', kind: 'desk' },
   { x: 940, y: 865, w: 72, h: 82, label: '옷장', kind: 'closet' },
   // 중앙 욕실
-  { x: 762, y: 826, w: 70, h: 50, label: '욕조', kind: 'tub' },
+  { x: 762, y: 862, w: 70, h: 30, label: '욕조', kind: 'tub' },
   // 발코니 소품
   { x: 64, y: 194, w: 58, h: 46, label: '화분대', kind: 'plant' },
   { x: 1504, y: 476, w: 40, h: 54, label: '화분대', kind: 'plant' },
