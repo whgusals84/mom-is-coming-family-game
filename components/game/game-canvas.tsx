@@ -28,7 +28,7 @@ import {
 } from '@/lib/game/data';
 import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
 import { clamp, distance, findPath, moveCircle, pointInRect } from '@/lib/game/map';
-import { drawCharacter, drawMap, drawMarker, drawRestingCharacter, drawSpeech, roundedRect } from '@/lib/game/renderer';
+import { drawCharacter, drawMap, drawMapAnimations, drawMarker, drawRestingCharacter, drawSpeech, roundedRect } from '@/lib/game/renderer';
 import { SpriteBank } from '@/lib/game/sprites';
 import type { GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
 
@@ -123,6 +123,13 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     reducedMotionQuery.addEventListener('change', onReducedMotionChange);
 
     const bank = new SpriteBank();
+    // 집과 가구는 움직이지 않으므로 한 번만 그려 둔다. 모바일에서 매 프레임
+    // 수백 개의 선·그림자·가구를 다시 그리는 비용을 없앤다.
+    const staticMap = document.createElement('canvas');
+    staticMap.width = WORLD.width;
+    staticMap.height = WORLD.height;
+    const staticMapContext = staticMap.getContext('2d');
+    if (staticMapContext) drawMap(staticMapContext, 0, false);
     const keys = new Set<string>();
     let pausedDuration = 0;
     let pausedRealAt = 0;
@@ -179,7 +186,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let nearbyRestingRole: 'mom' | 'brother' | 'dad' | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
-    let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: Math.min(devicePixelRatio || 1, 2) };
+    let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: 1 };
     const beep = (kind: GameTone) => playGameTone(kind, soundRef.current);
 
     const addBubble = (role: Bubble['role'], text: string, now: number, duration = 2.4) => {
@@ -370,7 +377,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
     const resizeCanvas = () => {
       const box = stage.getBoundingClientRect();
-      resize = { width: Math.max(1, box.width), height: Math.max(1, box.height), dpr: Math.min(devicePixelRatio || 1, 2) };
+      const width = Math.max(1, box.width);
+      const height = Math.max(1, box.height);
+      const mobile = width <= 980 || window.matchMedia('(pointer: coarse)').matches;
+      const maxDpr = mobile ? 1.25 : 1.75;
+      resize = { width, height, dpr: Math.min(devicePixelRatio || 1, maxDpr) };
       canvas.width = Math.floor(resize.width * resize.dpr); canvas.height = Math.floor(resize.height * resize.dpr);
       canvas.style.width = `${resize.width}px`; canvas.style.height = `${resize.height}px`;
     };
@@ -525,7 +536,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           else { target = player; mom.lastSeen = { x: player.x, y: player.y }; }
 
           mom.mood = mom.extremeUntil > now ? 'extreme' : (mom.stunnedUntil > now || mom.lostUntil > now || player.hiddenUntil > now ? 'search' : 'chase');
-          if (now >= mom.pathAt) { mom.path = findPath(mom, target, mom.r + 3); mom.pathAt = now + .42; }
+          if (now >= mom.pathAt) {
+            mom.path = findPath(mom, target, mom.r + 3);
+            mom.pathAt = now + (resize.width <= 980 ? .7 : .5);
+          }
           mom.moving = false;
           if (now >= mom.stunnedUntil && mom.path.length) {
             let waypoint = mom.path[0];
@@ -587,7 +601,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       const shakeY = shakeUntil > now ? (Math.random() - .5) * shakePower : 0;
       ctx.setTransform(resize.dpr, 0, 0, resize.dpr, 0, 0); ctx.clearRect(0, 0, resize.width, resize.height);
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
-      drawMap(ctx, now);
+      if (staticMapContext) ctx.drawImage(staticMap, 0, 0);
+      else drawMap(ctx, 0, false);
+      drawMapAnimations(ctx, now);
 
       if (isChase) {
         for (const interaction of interactions) {
@@ -670,7 +686,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.fillStyle = '#fffdf4'; ctx.font = '900 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText('숨는 중… 움직이지 말자!', resize.width / 2, resize.height - 120);
       }
 
-      if (running && now - lastHud > .1) {
+      if (running && now - lastHud > (resize.width <= 980 ? .18 : .12)) {
         lastHud = now;
         const nearby = isChase ? interactions.filter((i) => !i.used && distance(player, i) < 78).sort((a, b) => distance(player, a) - distance(player, b))[0] : undefined;
         setHud({

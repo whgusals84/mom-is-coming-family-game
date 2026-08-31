@@ -34,7 +34,11 @@ export function roundedRect(
   ctx.roundRect(x, y, w, h, r);
 }
 
-export function drawMap(ctx: CanvasRenderingContext2D, time = 0) {
+export function drawMap(
+  ctx: CanvasRenderingContext2D,
+  time = 0,
+  includeAnimatedDetails = true,
+) {
   ctx.fillStyle = '#e9c58e';
   ctx.fillRect(0, 0, 1600, 1000);
   for (const room of ROOMS) {
@@ -70,7 +74,8 @@ export function drawMap(ctx: CanvasRenderingContext2D, time = 0) {
     );
   }
 
-  for (const item of FURNITURE) drawFurniture(ctx, item, time);
+  for (const item of FURNITURE)
+    drawFurniture(ctx, item, time, includeAnimatedDetails);
   for (const door of DOORS)
     drawDoor(
       ctx,
@@ -84,10 +89,30 @@ export function drawMap(ctx: CanvasRenderingContext2D, time = 0) {
   drawDoorMat(ctx, LANDMARKS.entrance.x, LANDMARKS.entrance.y + 28);
 }
 
+export function drawMapAnimations(ctx: CanvasRenderingContext2D, time: number) {
+  const habitat = FURNITURE.find((item) => item.kind === 'turtleHabitat');
+  if (!habitat) return;
+  drawTinyTurtle(
+    ctx,
+    habitat.x + 23 + Math.sin(time * 1.3) * 3,
+    habitat.y + 22,
+    0.15,
+    '#5e9b57',
+  );
+  drawTinyTurtle(
+    ctx,
+    habitat.x + 48 + Math.cos(time * 1.1) * 3,
+    habitat.y + 37,
+    Math.PI + 0.2,
+    '#7a9f49',
+  );
+}
+
 function drawFurniture(
   ctx: CanvasRenderingContext2D,
   item: (typeof FURNITURE)[number],
   time: number,
+  includeAnimatedDetails: boolean,
 ) {
   const palettes: Record<string, [string, string]> = {
     sofa: ['#ea806b', '#a9453f'],
@@ -183,8 +208,10 @@ function drawFurniture(
     ctx.strokeStyle = '#fff8d5';
     ctx.lineWidth = 3;
     ctx.stroke();
-    drawTinyTurtle(ctx, item.x + 23 + Math.sin(time * 1.3) * 3, item.y + 22, .15, '#5e9b57');
-    drawTinyTurtle(ctx, item.x + 48 + Math.cos(time * 1.1) * 3, item.y + 37, Math.PI + .2, '#7a9f49');
+    if (includeAnimatedDetails) {
+      drawTinyTurtle(ctx, item.x + 23 + Math.sin(time * 1.3) * 3, item.y + 22, .15, '#5e9b57');
+      drawTinyTurtle(ctx, item.x + 48 + Math.cos(time * 1.1) * 3, item.y + 37, Math.PI + .2, '#7a9f49');
+    }
   } else if (item.kind === 'washer') {
     ctx.fillStyle = '#d8e4e5';
     roundedRect(ctx, item.x + 7, item.y + 7, item.w - 14, 13, 5);

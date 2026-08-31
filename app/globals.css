@@ -129,7 +129,10 @@ kbd { padding:3px 7px; background:#392b24; color:#fff; border-radius:6px; box-sh
   .gameover-panel { padding:40px 22px 26px; }.caught-stamp { right:4px; width:68px; height:68px; font-size:17px; }.result-grid > div { padding:12px; }
 }
 
-@media (pointer: coarse) { .mobile-controls { display:flex; } }
+@media (pointer: coarse) {
+  .mobile-controls { display:flex; }
+  .explore-toolbar { backdrop-filter:none; background:rgba(255,253,244,.97); }
+}
 @media (max-height: 620px) and (orientation: landscape) {
   .menu-shell { overflow:auto; align-items:start; }
   .home-panel { min-height:auto; grid-template-columns:1fr 1fr; padding:20px 28px; }.title-copy h1 { font-size:56px; }.title-copy p { line-height:1.35; }.hero-chase { display:none; }.menu-actions { grid-column:auto; display:flex; }.keyboard-hint { display:none; }
