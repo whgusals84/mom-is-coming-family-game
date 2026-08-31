@@ -64,8 +64,7 @@ type Npc = Actor & {
 type Bubble = { role: 'player' | 'mom' | 'brother' | 'dad'; text: string; until: number };
 type Effect = Point & { text: string; color: string; until: number; born: number };
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
-type TouchControl = 'left' | 'right' | 'up' | 'down' | 'dash' | 'interact';
-type DirectionControl = Extract<TouchControl, 'left' | 'right' | 'up' | 'down'>;
+type TouchControl = 'dash' | 'interact';
 type FamilyRole = 'mom' | 'brother' | 'dad';
 type FamilyTaskKind = keyof typeof FAMILY_TASK_TARGETS;
 type FamilyTaskCommand = { role: FamilyRole; kind: FamilyTaskKind };
@@ -80,8 +79,6 @@ type NearbyFamily = { role: FamilyRole; name: string; busyLabel: string | null }
 type DoorState = { id: string; closedUntil: number };
 type HouseEventState = { kind: HouseEventKind; startedAt: number; until: number };
 type FootprintDecoy = Point & { until: number };
-
-const DIRECTION_CONTROLS = new Set<DirectionControl>(['left', 'right', 'up', 'down']);
 
 const PLAYER_MOVE_OPTIONS = { ignoreKinds: ['sofa'] } as const;
 const SOFA_SPEED_MULTIPLIER = 1.38;
@@ -142,8 +139,11 @@ function familyTitle(accidents: number, closeCalls: number, maxCombo: number, de
 export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, onOpenHow, onOpenCharacters, onOpenCollection }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const touchRef = useRef({ left: false, right: false, up: false, down: false, dash: false, interact: false });
-  const directionPointersRef = useRef(new Map<number, DirectionControl>());
+  const touchRef = useRef({ moveX: 0, moveY: 0, dash: false, interact: false });
+  const joystickBaseRef = useRef<HTMLDivElement>(null);
+  const joystickKnobRef = useRef<HTMLDivElement>(null);
+  const joystickPointerRef = useRef<number | null>(null);
+  const joystickBoundsRef = useRef<{ centerX: number; centerY: number; maxTravel: number } | null>(null);
   const soundRef = useRef(true);
   const phaseRef = useRef<GamePhase>(initialPhase);
   const familyTaskCommandRef = useRef<FamilyTaskCommand | null>(null);
@@ -695,9 +695,10 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     const preventTouchScroll = (event: TouchEvent) => event.preventDefault();
     const preventContextMenu = (event: MouseEvent) => event.preventDefault();
     const releaseTouch = () => {
-      directionPointersRef.current.clear();
-      touchRef.current.left = false; touchRef.current.right = false;
-      touchRef.current.up = false; touchRef.current.down = false;
+      joystickPointerRef.current = null;
+      joystickBoundsRef.current = null;
+      touchRef.current.moveX = 0; touchRef.current.moveY = 0;
+      if (joystickKnobRef.current) joystickKnobRef.current.style.transform = 'translate3d(0,0,0)';
     };
     window.addEventListener('keydown', onKeyDown, { passive: false }); window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', releaseTouch);
@@ -759,12 +760,13 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
         }
 
         const touch = touchRef.current;
-        let dx = Number(keys.has('ArrowRight') || touch.right) - Number(keys.has('ArrowLeft') || touch.left);
-        let dy = Number(keys.has('ArrowDown') || touch.down) - Number(keys.has('ArrowUp') || touch.up);
+        let dx = Number(keys.has('ArrowRight')) - Number(keys.has('ArrowLeft')) + touch.moveX;
+        let dy = Number(keys.has('ArrowDown')) - Number(keys.has('ArrowUp')) + touch.moveY;
         if (touch.dash) { touch.dash = false; tryDash(now); }
         if (touch.interact) { touch.interact = false; doInteraction(now); }
-        const length = Math.hypot(dx, dy) || 1; dx /= length; dy /= length;
-        const wantsMove = Math.abs(dx) + Math.abs(dy) > 0 && player.hiddenUntil <= now;
+        const length = Math.hypot(dx, dy);
+        if (length > 1) { dx /= length; dy /= length; }
+        const wantsMove = length > .02 && player.hiddenUntil <= now;
         if (dx < -.1) player.facing = -1;
         else if (dx > .1) player.facing = 1;
         player.moving = false;
@@ -1197,46 +1199,54 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
     };
   }, [onGameOver, playerOutfit]);
 
-  const syncDirections = () => {
-    const held = new Set(directionPointersRef.current.values());
-    touchRef.current.left = held.has('left');
-    touchRef.current.right = held.has('right');
-    touchRef.current.up = held.has('up');
-    touchRef.current.down = held.has('down');
-  };
-
   const press = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const key = event.currentTarget.dataset.control as TouchControl | undefined;
     if (!key) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     unlockGameAudio();
-    if (DIRECTION_CONTROLS.has(key as DirectionControl)) {
-      directionPointersRef.current.set(event.pointerId, key as DirectionControl);
-      syncDirections();
-    } else {
-      touchRef.current[key] = true;
-    }
+    touchRef.current[key] = true;
   };
-  const release = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const key = event.currentTarget.dataset.control as TouchControl | undefined;
-    if (!key) return;
-    event.preventDefault();
-    if (DIRECTION_CONTROLS.has(key as DirectionControl)) {
-      directionPointersRef.current.delete(event.pointerId);
-      syncDirections();
-    } else {
-      touchRef.current[key] = false;
-    }
+
+  const moveJoystick = (clientX: number, clientY: number) => {
+    const knob = joystickKnobRef.current;
+    const bounds = joystickBoundsRef.current;
+    if (!bounds || !knob) return;
+    const { centerX, centerY, maxTravel } = bounds;
+    const rawX = clientX - centerX;
+    const rawY = clientY - centerY;
+    const rawLength = Math.hypot(rawX, rawY);
+    const scale = rawLength > maxTravel ? maxTravel / rawLength : 1;
+    const offsetX = rawX * scale;
+    const offsetY = rawY * scale;
+    const normalizedX = offsetX / maxTravel;
+    const normalizedY = offsetY / maxTravel;
+    const strength = Math.hypot(normalizedX, normalizedY);
+    touchRef.current.moveX = strength < .12 ? 0 : normalizedX;
+    touchRef.current.moveY = strength < .12 ? 0 : normalizedY;
+    knob.style.transform = `translate3d(${offsetX.toFixed(1)}px,${offsetY.toFixed(1)}px,0)`;
   };
-  const slideDirection = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!directionPointersRef.current.has(event.pointerId)) return;
+  const startJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const element = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLButtonElement>('[data-control]');
-    const key = element?.dataset.control as TouchControl | undefined;
-    if (!key || !DIRECTION_CONTROLS.has(key as DirectionControl)) return;
-    directionPointersRef.current.set(event.pointerId, key as DirectionControl);
-    syncDirections();
+    unlockGameAudio();
+    joystickPointerRef.current = event.pointerId;
+    const rect = event.currentTarget.getBoundingClientRect();
+    joystickBoundsRef.current = { centerX: rect.left + rect.width / 2, centerY: rect.top + rect.height / 2, maxTravel: rect.width * .29 };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    moveJoystick(event.clientX, event.clientY);
+  };
+  const dragJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (joystickPointerRef.current !== event.pointerId) return;
+    event.preventDefault();
+    moveJoystick(event.clientX, event.clientY);
+  };
+  const stopJoystick = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (joystickPointerRef.current !== event.pointerId) return;
+    event.preventDefault();
+    joystickPointerRef.current = null;
+    joystickBoundsRef.current = null;
+    touchRef.current.moveX = 0; touchRef.current.moveY = 0;
+    if (joystickKnobRef.current) joystickKnobRef.current.style.transform = 'translate3d(0,0,0)';
   };
 
   return (
@@ -1332,11 +1342,19 @@ export function GameCanvas({ highScore, initialPhase, playerOutfit, onGameOver, 
       <div className="dash-meter" aria-label="대시 충전"><span style={{ transform: `scaleX(${hud.dashReady})` }} /></div>
 
       <div className="mobile-controls" aria-label="터치 조작">
-        <div className="dpad" onPointerMove={slideDirection}>
-          <button className="up" data-control="up" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▲</button>
-          <button className="left" data-control="left" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>◀</button>
-          <button className="right" data-control="right" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▶</button>
-          <button className="down" data-control="down" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▼</button>
+        <div
+          ref={joystickBaseRef}
+          className="joystick-base"
+          role="application"
+          aria-label="360도 이동 조이스틱"
+          onPointerDown={startJoystick}
+          onPointerMove={dragJoystick}
+          onPointerUp={stopJoystick}
+          onPointerCancel={stopJoystick}
+          onLostPointerCapture={stopJoystick}
+        >
+          <span className="joystick-guide" aria-hidden="true">360°</span>
+          <div ref={joystickKnobRef} className="joystick-knob" aria-hidden="true"><span /></div>
         </div>
         <div className="action-buttons">
           <button className="touch-dash" data-control="dash" onPointerDown={press}>DASH<small>대시</small></button>
