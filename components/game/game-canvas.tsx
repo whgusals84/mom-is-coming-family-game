@@ -61,6 +61,9 @@ type Bubble = { role: 'player' | 'mom' | 'brother' | 'dad'; text: string; until:
 type Effect = Point & { text: string; color: string; until: number; born: number };
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
 type TouchControl = 'left' | 'right' | 'up' | 'down' | 'dash' | 'interact';
+type DirectionControl = Extract<TouchControl, 'left' | 'right' | 'up' | 'down'>;
+
+const DIRECTION_CONTROLS = new Set<DirectionControl>(['left', 'right', 'up', 'down']);
 
 const PLAYER_MOVE_OPTIONS = { ignoreKinds: ['sofa'] } as const;
 const SOFA_SPEED_MULTIPLIER = 1.38;
@@ -93,6 +96,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef({ left: false, right: false, up: false, down: false, dash: false, interact: false });
+  const directionPointersRef = useRef(new Map<number, DirectionControl>());
   const soundRef = useRef(true);
   const phaseRef = useRef<GamePhase>(initialPhase);
   const [soundOn, setSoundOn] = useState(true);
@@ -380,10 +384,15 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       const width = Math.max(1, box.width);
       const height = Math.max(1, box.height);
       const mobile = width <= 980 || window.matchMedia('(pointer: coarse)').matches;
-      const maxDpr = mobile ? 1.25 : 1.75;
+      // Phones can afford a crisp 2x canvas after the static-map optimization. Large
+      // tablets are capped by a pixel budget so image quality does not bring back lag.
+      const mobilePixelBudgetDpr = Math.sqrt(2_200_000 / (width * height));
+      const maxDpr = mobile ? Math.max(1.35, Math.min(2, mobilePixelBudgetDpr)) : 2;
       resize = { width, height, dpr: Math.min(devicePixelRatio || 1, maxDpr) };
       canvas.width = Math.floor(resize.width * resize.dpr); canvas.height = Math.floor(resize.height * resize.dpr);
       canvas.style.width = `${resize.width}px`; canvas.style.height = `${resize.height}px`;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
     };
     const observer = new ResizeObserver(resizeCanvas); observer.observe(stage); resizeCanvas();
     window.visualViewport?.addEventListener('resize', resizeCanvas);
@@ -402,6 +411,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     const preventTouchScroll = (event: TouchEvent) => event.preventDefault();
     const preventContextMenu = (event: MouseEvent) => event.preventDefault();
     const releaseTouch = () => {
+      directionPointersRef.current.clear();
       touchRef.current.left = false; touchRef.current.right = false;
       touchRef.current.up = false; touchRef.current.down = false;
     };
@@ -731,19 +741,46 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     };
   }, [onGameOver]);
 
+  const syncDirections = () => {
+    const held = new Set(directionPointersRef.current.values());
+    touchRef.current.left = held.has('left');
+    touchRef.current.right = held.has('right');
+    touchRef.current.up = held.has('up');
+    touchRef.current.down = held.has('down');
+  };
+
   const press = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const key = event.currentTarget.dataset.control as TouchControl | undefined;
     if (!key) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     unlockGameAudio();
-    touchRef.current[key] = true;
+    if (DIRECTION_CONTROLS.has(key as DirectionControl)) {
+      directionPointersRef.current.set(event.pointerId, key as DirectionControl);
+      syncDirections();
+    } else {
+      touchRef.current[key] = true;
+    }
   };
   const release = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const key = event.currentTarget.dataset.control as TouchControl | undefined;
     if (!key) return;
     event.preventDefault();
-    touchRef.current[key] = false;
+    if (DIRECTION_CONTROLS.has(key as DirectionControl)) {
+      directionPointersRef.current.delete(event.pointerId);
+      syncDirections();
+    } else {
+      touchRef.current[key] = false;
+    }
+  };
+  const slideDirection = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!directionPointersRef.current.has(event.pointerId)) return;
+    event.preventDefault();
+    const element = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLButtonElement>('[data-control]');
+    const key = element?.dataset.control as TouchControl | undefined;
+    if (!key || !DIRECTION_CONTROLS.has(key as DirectionControl)) return;
+    directionPointersRef.current.set(event.pointerId, key as DirectionControl);
+    syncDirections();
   };
 
   return (
@@ -813,7 +850,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       <div className="dash-meter" aria-label="대시 충전"><span style={{ transform: `scaleX(${hud.dashReady})` }} /></div>
 
       <div className="mobile-controls" aria-label="터치 조작">
-        <div className="dpad">
+        <div className="dpad" onPointerMove={slideDirection}>
           <button className="up" data-control="up" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▲</button>
           <button className="left" data-control="left" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>◀</button>
           <button className="right" data-control="right" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▶</button>
