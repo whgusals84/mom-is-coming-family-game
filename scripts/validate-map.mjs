@@ -241,7 +241,7 @@ const escapeRoutes = [
     room: '내 방',
     anchor: ROOM_ANCHORS.find((point) => point.label === '내 방'),
     exits: ['내 방 문', '내 방 · 오른쪽 발코니'],
-    bounds: { minX: 875, maxX: 1405, minY: 626, maxY: 976 },
+    bounds: { minX: 855, maxX: 1405, minY: 626, maxY: 976 },
   },
   {
     room: '왼쪽 욕실',
@@ -253,7 +253,7 @@ const escapeRoutes = [
     room: '중앙 욕실',
     anchor: ROOM_ANCHORS.find((point) => point.label === '중앙 욕실'),
     exits: ['중앙 욕실 문'],
-    bounds: { minX: 716, maxX: 880, minY: 696, maxY: 916 },
+    bounds: { minX: 716, maxX: 860, minY: 696, maxY: 916 },
   },
 ];
 

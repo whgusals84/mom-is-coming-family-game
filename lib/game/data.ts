@@ -14,8 +14,8 @@ export const ROOMS: Rect[] = [
   { x: 190, y: 560, w: 370, h: 120, label: '욕실', kind: 'bathroom' },
   { x: 560, y: 560, w: 320, h: 140, label: '복도', kind: 'hall' },
   { x: 190, y: 680, w: 530, h: 296, label: '아빠 방', kind: 'dadRoom' },
-  { x: 720, y: 700, w: 160, h: 220, label: '욕실', kind: 'bathroom' },
-  { x: 880, y: 630, w: 520, h: 346, label: '내 방', kind: 'playerRoom' },
+  { x: 720, y: 700, w: 140, h: 220, label: '욕실', kind: 'bathroom' },
+  { x: 860, y: 630, w: 540, h: 346, label: '내 방', kind: 'playerRoom' },
 ];
 
 export const WALLS: Rect[] = [
@@ -45,15 +45,15 @@ export const WALLS: Rect[] = [
   { x: 535, y: 676, w: 25, h: 24 },
   // 아빠 방과 중앙 복도
   { x: 716, y: 676, w: 24, h: 324 },
-  // 내 방 윗벽: 가구와 겹치지 않는 넓은 출입문
-  { x: 876, y: 626, w: 24, h: 24 },
-  { x: 1080, y: 626, w: 324, h: 24 },
-  { x: 876, y: 626, w: 24, h: 374 },
+  // 내 방 윗벽: 사용자가 서서 바라본 위치에 작은 120px 방문을 둔다.
+  { x: 856, y: 626, w: 74, h: 24 },
+  { x: 1050, y: 626, w: 354, h: 24 },
+  { x: 856, y: 626, w: 24, h: 374 },
   // 중앙 아래 욕실
   { x: 716, y: 696, w: 12, h: 24 },
-  { x: 868, y: 696, w: 12, h: 24 },
+  { x: 848, y: 696, w: 12, h: 24 },
   // 중앙 욕실 아래쪽은 평면도상 외부/설비 공간이라 통과할 수 없다.
-  { x: 716, y: 916, w: 164, h: 84 },
+  { x: 716, y: 916, w: 144, h: 84 },
 ];
 
 export const DOORS = [
@@ -62,7 +62,7 @@ export const DOORS = [
   { x: 568, y: 580, angle: Math.PI, label: '욕실 문', span: 78 },
   { x: 405, y: 688, angle: Math.PI / 2, label: '욕실 문', span: 82 },
   { x: 560, y: 688, angle: Math.PI / 2, label: '아빠 방 문', span: 86 },
-  { x: 900, y: 638, angle: Math.PI / 2, label: '내 방 문', span: 88 },
+  { x: 930, y: 638, angle: Math.PI / 2, label: '내 방 문', span: 78 },
   { x: 728, y: 708, angle: Math.PI / 2, label: '욕실 문', span: 82 },
 ] as const;
 
@@ -112,8 +112,8 @@ export const PASSAGES: Rect[] = [
   { x: 556, y: 580, w: 24, h: 96, label: '욕실 문', kind: 'passage' },
   { x: 405, y: 676, w: 130, h: 24, label: '욕실 · 아빠 방', kind: 'passage' },
   { x: 560, y: 676, w: 156, h: 24, label: '복도 · 아빠 방', kind: 'passage' },
-  { x: 900, y: 626, w: 180, h: 24, label: '내 방 문', kind: 'passage' },
-  { x: 728, y: 696, w: 140, h: 24, label: '중앙 욕실 문', kind: 'passage' },
+  { x: 930, y: 626, w: 120, h: 24, label: '내 방 문', kind: 'passage' },
+  { x: 728, y: 696, w: 120, h: 24, label: '중앙 욕실 문', kind: 'passage' },
 ];
 
 export const LIVING_SOFA: Rect = {
