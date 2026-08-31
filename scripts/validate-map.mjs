@@ -269,8 +269,12 @@ if (finalPiano && livingSofa) {
   const passageWidth = livingSofa.x - (finalPiano.x + finalPiano.w);
   if (passageWidth < 50) failures.push(`피아노와 소파 사이 통로가 ${passageWidth}px라 너무 좁음`);
 }
-if (!livingDining || livingDining.x !== 279 || livingDining.y !== 211 || livingDining.w !== 265 || livingDining.h !== 50)
+if (!livingDining || livingDining.x !== 310 || livingDining.y !== 211 || livingDining.w !== 265 || livingDining.h !== 50)
   failures.push('최종 거실 식탁 배치가 저장된 배치도와 다름');
+if (finalPiano && livingDining) {
+  const passageWidth = livingDining.x - (finalPiano.x + finalPiano.w);
+  if (passageWidth < 50) failures.push(`피아노와 식탁 사이 통로가 ${passageWidth}px라 너무 좁음`);
+}
 for (const passage of PASSAGES) {
   const span = Math.max(passage.w, passage.h);
   const minimum = passage.label === '욕실 문' ? 96 : MIN_COMFORTABLE_PASSAGE;
