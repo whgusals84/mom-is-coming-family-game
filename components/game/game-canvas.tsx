@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
+import { playGameTone, startNocturne, stopNocturne, unlockGameAudio, type GameTone } from '@/lib/game/audio';
 import {
   FAMILY_RESTING_POSITIONS,
   FAMILY_WAKE_POSITIONS,
@@ -20,6 +20,7 @@ import {
   ITEMS,
   LANDMARKS,
   LINES,
+  LIVING_PIANO,
   LIVING_SOFA,
   MISSIONS,
   NPC_SPOTS,
@@ -104,7 +105,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     setPhase('chase');
   };
 
-  useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
+  useEffect(() => {
+    soundRef.current = soundOn;
+    if (!soundOn) stopNocturne();
+  }, [soundOn]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -171,6 +175,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let blockedHintUntil = 0;
     let nextBumpEffect = 0;
     let playerOnSofa = false;
+    let playerNearPiano = false;
     let nearbyRestingRole: 'mom' | 'brother' | 'dad' | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
@@ -330,7 +335,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
     const endGame = (now: number) => {
       if (!running || gameStartedAt === null) return;
-      running = false; caughtAt = now; beep('caught'); alertText = '엄마에게 잡혔다!'; alertUntil = now + 2;
+      running = false; stopNocturne(); caughtAt = now; beep('caught'); alertText = '엄마에게 잡혔다!'; alertUntil = now + 2;
       if (!resultSent) {
         resultSent = true;
         onGameOver({ score: Math.floor(score), elapsed: now - gameStartedAt, accidents, closeCalls: counters.closeCall, missionDone: mission.done });
@@ -376,6 +381,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     const onKeyDown = (event: KeyboardEvent) => {
       const code = event.code;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(code)) event.preventDefault();
+      unlockGameAudio();
       keys.add(code);
       const now = clock();
       if (code === 'Space' && !event.repeat) tryDash(now);
@@ -397,6 +403,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       const realNow = performance.now() / 1000;
       if (document.hidden) {
         pausedRealAt ||= realNow;
+        stopNocturne();
         keys.clear(); releaseTouch();
       } else if (pausedRealAt) {
         pausedDuration += realNow - pausedRealAt;
@@ -478,6 +485,15 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           beep('nice');
         }
         playerOnSofa = nowOnSofa;
+
+        const pianoCenter = { x: LIVING_PIANO.x + LIVING_PIANO.w / 2, y: LIVING_PIANO.y + LIVING_PIANO.h / 2 };
+        const nowNearPiano = distance(player, pianoCenter) < 135;
+        if (nowNearPiano && !playerNearPiano) {
+          addEffect(pianoCenter.x, pianoCenter.y - 20, '♪ 녹턴 ♪', '#7556b5', now, 1.6);
+        }
+        if (nowNearPiano && soundRef.current) startNocturne(true);
+        else stopNocturne();
+        playerNearPiano = nowNearPiano;
 
         if (!isChase) {
           const restingFamily = [
@@ -664,6 +680,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
             : playerOnSofa
               ? '🛋️ 소파 위 스피드 UP! 엄마는 소파를 돌아와요'
+            : playerNearPiano
+              ? (soundRef.current ? '🎹 쇼팽 녹턴 Op. 9 No. 2 · 피아노에서 멀어지면 멈춰요' : '🔇 소리를 켜면 쇼팽의 녹턴이 연주돼요')
             : isChase
               ? (nearby ? `E · ${nearby.label}` : (!dad.collected ? '집을 돌아다니는 아빠에게 가까이 가세요!' : '아빠와 형도 집 안을 돌아다니고 있어요'))
               : nearbyRestingRole
@@ -684,7 +702,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     };
     animation = requestAnimationFrame(frame);
     return () => {
-      running = false; cancelAnimationFrame(animation); observer.disconnect();
+      running = false; stopNocturne(); cancelAnimationFrame(animation); observer.disconnect();
       window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', releaseTouch);
       window.removeEventListener('pagehide', releaseTouch);

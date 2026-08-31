@@ -125,12 +125,21 @@ export const LIVING_SOFA: Rect = {
   kind: 'sofa',
 };
 
+export const LIVING_PIANO: Rect = {
+  x: 206,
+  y: 72,
+  w: 48,
+  h: 124,
+  label: '피아노',
+  kind: 'piano',
+};
+
 export const FURNITURE: Rect[] = [
   // 거실
   LIVING_SOFA,
   { x: 325, y: 495, w: 120, h: 55, label: 'TV', kind: 'tv' },
   // 사용자가 최종 배치한 거실 피아노와 긴 식탁.
-  { x: 206, y: 72, w: 48, h: 124, label: '피아노', kind: 'piano' },
+  LIVING_PIANO,
   { x: 310, y: 211, w: 265, h: 50, label: '식탁', kind: 'dining' },
   { x: 445, y: 350, w: 90, h: 60, label: '테이블', kind: 'table' },
   { x: 240, y: 496, w: 50, h: 50, label: '화분', kind: 'plant' },
