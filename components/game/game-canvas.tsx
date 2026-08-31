@@ -18,14 +18,18 @@ import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WO
 import {
   FURNITURE_PLAN_CATALOG,
   FURNITURE_PLAN_STORAGE_KEY,
+  MAX_FURNITURE_PLAN_SIZE,
   MAX_FURNITURE_PLAN_MARKERS,
+  MIN_FURNITURE_PLAN_SIZE,
   clampFurniturePlanMarker,
   createFurniturePlanMarker,
   getFurniturePlanDefinition,
+  getFurniturePlanFootprint,
   parseFurniturePlan,
   pointHitsFurniturePlanMarker,
   screenToFurniturePlanWorld,
   serializeFurniturePlan,
+  setFurniturePlanFootprintSize,
 } from '@/lib/game/furniture-plan';
 import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
 import { clamp, distance, findPath, moveCircle } from '@/lib/game/map';
@@ -307,6 +311,19 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           : marker,
       ),
       '가구 방향을 90도 돌려서 저장했어요.',
+    );
+  };
+
+  const resizeSelectedFurniturePlanMarker = (axis: 'width' | 'height', value: number) => {
+    const id = selectedFurniturePlanMarkerRef.current;
+    if (!id) return;
+    commitFurniturePlan(
+      furniturePlanMarkersRef.current.map((marker) =>
+        marker.id === id
+          ? clampFurniturePlanMarker(setFurniturePlanFootprintSize(marker, axis, value), WORLD)
+          : marker,
+      ),
+      '가구 표시 크기를 자동 저장했어요.',
     );
   };
 
@@ -894,6 +911,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const selectedFurniturePlanMarker = furniturePlanMarkers.find(
     (marker) => marker.id === selectedFurniturePlanMarkerId,
   );
+  const selectedFurniturePlanFootprint = selectedFurniturePlanMarker
+    ? getFurniturePlanFootprint(selectedFurniturePlanMarker)
+    : null;
   const activeFurniturePlanDefinition = getFurniturePlanDefinition(furniturePlanTool);
 
   return (
@@ -987,7 +1007,43 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                   onChange={(event) => updateSelectedFurniturePlanLabel(event.target.value)}
                   onBlur={restoreSelectedFurniturePlanLabel}
                 />
-                <div>
+                {selectedFurniturePlanMarker && selectedFurniturePlanFootprint && (
+                  <div className="furniture-plan-size" aria-label="선택한 가구 표시 크기">
+                    <div className="furniture-plan-size-heading">
+                      <span>표시 크기</span>
+                      <output>{Math.round(selectedFurniturePlanFootprint.w)} × {Math.round(selectedFurniturePlanFootprint.h)}</output>
+                    </div>
+                    {([
+                      ['width', '가로', selectedFurniturePlanFootprint.w],
+                      ['height', '세로', selectedFurniturePlanFootprint.h],
+                    ] as const).map(([axis, label, value]) => (
+                      <div className="furniture-plan-size-row" key={axis}>
+                        <label htmlFor={`furniture-plan-${axis}`}>{label}</label>
+                        <button
+                          type="button"
+                          aria-label={`${label} 크기 줄이기`}
+                          onClick={() => resizeSelectedFurniturePlanMarker(axis, value - 10)}
+                        >−</button>
+                        <input
+                          id={`furniture-plan-${axis}`}
+                          type="range"
+                          min={MIN_FURNITURE_PLAN_SIZE}
+                          max={MAX_FURNITURE_PLAN_SIZE}
+                          step={2}
+                          value={value}
+                          onChange={(event) => resizeSelectedFurniturePlanMarker(axis, Number(event.target.value))}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`${label} 크기 늘리기`}
+                          onClick={() => resizeSelectedFurniturePlanMarker(axis, value + 10)}
+                        >+</button>
+                        <output>{Math.round(value)}</output>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="furniture-plan-edit-actions">
                   <Button variant="secondary" onClick={rotateSelectedFurniturePlanMarker} disabled={!selectedFurniturePlanMarker}>
                     <RotateCw /> 90° 회전
                   </Button>

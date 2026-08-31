@@ -9,6 +9,8 @@ export const FURNITURE_PLAN_STORAGE_KEY = 'mom-is-coming-furniture-markers-v1';
 export const FURNITURE_PLAN_SCHEMA_VERSION = 1;
 export const FURNITURE_PLAN_MAP_REVISION = 'wide-doors-v11';
 export const MAX_FURNITURE_PLAN_MARKERS = 100;
+export const MIN_FURNITURE_PLAN_SIZE = 28;
+export const MAX_FURNITURE_PLAN_SIZE = 320;
 
 export const FURNITURE_PLAN_CATALOG: ReadonlyArray<{
   kind: FurniturePlanKind;
@@ -46,6 +48,17 @@ export function getFurniturePlanDefinition(kind: FurniturePlanKind) {
 export function getFurniturePlanFootprint(marker: FurniturePlanMarker) {
   const sideways = marker.rotation === 90 || marker.rotation === 270;
   return { w: sideways ? marker.h : marker.w, h: sideways ? marker.w : marker.h };
+}
+
+export function setFurniturePlanFootprintSize(
+  marker: FurniturePlanMarker,
+  axis: 'width' | 'height',
+  value: number,
+): FurniturePlanMarker {
+  const size = clamp(value, MIN_FURNITURE_PLAN_SIZE, MAX_FURNITURE_PLAN_SIZE);
+  const sideways = marker.rotation === 90 || marker.rotation === 270;
+  if (axis === 'width') return sideways ? { ...marker, h: size } : { ...marker, w: size };
+  return sideways ? { ...marker, w: size } : { ...marker, h: size };
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -138,8 +151,12 @@ export function sanitizeFurniturePlan(value: unknown): FurniturePlanMarker[] {
     if (!CATALOG_BY_KIND.has(kind) || !ROTATIONS.has(rotation)) continue;
     if (!finiteNumber(item.x) || !finiteNumber(item.y)) continue;
     const definition = getFurniturePlanDefinition(kind);
-    const w = finiteNumber(item.w) ? clamp(item.w as number, 28, 320) : definition.w;
-    const h = finiteNumber(item.h) ? clamp(item.h as number, 28, 320) : definition.h;
+    const w = finiteNumber(item.w)
+      ? clamp(item.w as number, MIN_FURNITURE_PLAN_SIZE, MAX_FURNITURE_PLAN_SIZE)
+      : definition.w;
+    const h = finiteNumber(item.h)
+      ? clamp(item.h as number, MIN_FURNITURE_PLAN_SIZE, MAX_FURNITURE_PLAN_SIZE)
+      : definition.h;
     const rawId = typeof item.id === 'string' ? item.id.slice(0, 80) : '';
     if (!rawId || ids.has(rawId)) continue;
     ids.add(rawId);

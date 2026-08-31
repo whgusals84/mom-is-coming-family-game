@@ -8,6 +8,7 @@ import {
   pointHitsFurniturePlanMarker,
   sanitizeFurniturePlan,
   screenToFurniturePlanWorld,
+  setFurniturePlanFootprintSize,
   serializeFurniturePlan,
 } from '../lib/game/furniture-plan.ts';
 
@@ -22,6 +23,13 @@ assert.equal(rotated.x, 85);
 assert.equal(rotated.y, 55);
 assert.equal(pointHitsFurniturePlanMarker({ x: rotated.x + 85, y: rotated.y }, rotated), true);
 assert.equal(pointHitsFurniturePlanMarker({ x: rotated.x + 86, y: rotated.y }, rotated), false);
+
+const resized = setFurniturePlanFootprintSize(rotated, 'width', 220);
+assert.deepEqual(getFurniturePlanFootprint(resized), { w: 220, h: 110 }, '회전 후에도 지도 기준 가로 크기를 조절해야 합니다.');
+const resizedAgain = setFurniturePlanFootprintSize(resized, 'height', 80);
+assert.deepEqual(getFurniturePlanFootprint(resizedAgain), { w: 220, h: 80 }, '지도 기준 세로 크기를 조절해야 합니다.');
+assert.deepEqual(getFurniturePlanFootprint(setFurniturePlanFootprintSize(marker, 'width', 999)), { w: 320, h: 170 });
+assert.deepEqual(getFurniturePlanFootprint(setFurniturePlanFootprintSize(marker, 'height', 1)), { w: 110, h: 28 });
 
 const saved = serializeFurniturePlan([marker, rotated]);
 const loaded = parseFurniturePlan(saved);
@@ -54,4 +62,4 @@ for (const zoom of [0.62, 1, 1.18]) {
   }
 }
 
-console.log('가구 배치 표시 검사 통과: 저장, 복구, 회전, 경계와 화면 좌표가 정상입니다.');
+console.log('가구 배치 표시 검사 통과: 저장, 복구, 크기, 회전, 경계와 화면 좌표가 정상입니다.');
