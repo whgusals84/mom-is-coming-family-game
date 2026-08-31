@@ -107,6 +107,7 @@ function drawFurniture(
     sink: ['#d8efed', '#77a6a0'],
     tub: ['#d2e9ef', '#6a9aaa'],
     turtleHabitat: ['#8acfc3', '#356e67'],
+    washer: ['#eef5f4', '#718b8e'],
   };
   const [fill, edge] = palettes[item.kind ?? ''] ?? ['#c99462', '#805836'];
   ctx.save();
@@ -184,6 +185,24 @@ function drawFurniture(
     ctx.stroke();
     drawTinyTurtle(ctx, item.x + 23 + Math.sin(time * 1.3) * 3, item.y + 22, .15, '#5e9b57');
     drawTinyTurtle(ctx, item.x + 48 + Math.cos(time * 1.1) * 3, item.y + 37, Math.PI + .2, '#7a9f49');
+  } else if (item.kind === 'washer') {
+    ctx.fillStyle = '#d8e4e5';
+    roundedRect(ctx, item.x + 7, item.y + 7, item.w - 14, 13, 5);
+    ctx.fill();
+    ctx.fillStyle = '#45656d';
+    roundedRect(ctx, item.x + item.w - 23, item.y + 10, 10, 6, 2);
+    ctx.fill();
+    ctx.fillStyle = '#b9d6dc';
+    ctx.strokeStyle = '#536e75';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(item.x + item.w / 2, item.y + 42, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.65)';
+    ctx.beginPath();
+    ctx.arc(item.x + item.w / 2 - 5, item.y + 37, 5, 0, Math.PI * 2);
+    ctx.fill();
   } else if (item.kind === 'bed') {
     ctx.save();
     ctx.translate(item.x + item.w / 2, item.y + item.h / 2);
@@ -253,9 +272,15 @@ function drawFurniture(
     ctx.fill();
   }
   ctx.fillStyle = 'rgba(49,37,31,.75)';
-  ctx.font = `800 ${item.kind === 'turtleHabitat' ? 10 : 13}px system-ui`;
+  ctx.font = `800 ${item.kind === 'turtleHabitat' || item.kind === 'washer' ? 10 : 13}px system-ui`;
   ctx.textAlign = 'center';
-  ctx.fillText(item.label ?? '', item.x + item.w / 2, item.kind === 'turtleHabitat' ? item.y + item.h - 4 : item.y + item.h / 2 + 5);
+  ctx.fillText(
+    item.label ?? '',
+    item.x + item.w / 2,
+    item.kind === 'turtleHabitat' || item.kind === 'washer'
+      ? item.y + item.h - 4
+      : item.y + item.h / 2 + 5,
+  );
   // 이 점선 사각형이 실제 충돌 판정과 완전히 같은 가구의 바닥 면적이다.
   ctx.setLineDash([7, 5]);
   ctx.strokeStyle = 'rgba(57,43,36,.72)';

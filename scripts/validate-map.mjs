@@ -266,6 +266,7 @@ const livingDining = FURNITURE.find(
 const livingTv = FURNITURE.find((item) => item.kind === 'tv');
 const livingPlant = FURNITURE.find((item) => item.kind === 'plant' && item.x < 600);
 const turtleHome = FURNITURE.find((item) => item.kind === 'turtleHabitat');
+const balconyWasher = FURNITURE.find((item) => item.kind === 'washer');
 const restingFurniture = [
   { role: '엄마', point: FAMILY_RESTING_POSITIONS.mom, furniture: FURNITURE.find((item) => item.kind === 'sofa') },
   { role: '형', point: FAMILY_RESTING_POSITIONS.brother, furniture: FURNITURE.find((item) => item.label === '형 침대') },
@@ -296,6 +297,15 @@ if (!livingTv || !livingPlant || livingPlant.x <= livingTv.x + livingTv.w)
   failures.push('거실 화분이 TV 오른쪽에 배치되지 않음');
 if (!livingTv || !turtleHome || turtleHome.x + turtleHome.w >= livingTv.x)
   failures.push('두 마리 거북이 집이 TV 왼쪽의 기존 화분 자리에 배치되지 않음');
+if (!balconyWasher || balconyWasher.x !== 1505 || balconyWasher.y !== 840 || balconyWasher.w !== 58 || balconyWasher.h !== 66)
+  failures.push('세탁기가 사용자가 지정한 오른쪽 발코니 위치와 다름');
+if (balconyWasher) {
+  const balconyPassageWidth = balconyWasher.x - 1404;
+  if (balconyPassageWidth < 96)
+    failures.push(`세탁기 앞 발코니 통로가 ${balconyPassageWidth}px라 너무 좁음`);
+  if (balconyWasher.x + balconyWasher.w > 1576 || balconyWasher.y + balconyWasher.h > 910)
+    failures.push('세탁기가 오른쪽 벽 또는 내 방 발코니 출입 경계를 침범함');
+}
 const plantInteraction = INTERACTION_TEMPLATES.find((item) => item.id === 'plant');
 if (!livingPlant || !plantInteraction || plantInteraction.x < livingPlant.x || plantInteraction.x > livingPlant.x + livingPlant.w || plantInteraction.y < livingPlant.y || plantInteraction.y > livingPlant.y + livingPlant.h)
   failures.push('화분 사고 위치가 옮긴 화분과 일치하지 않음');
@@ -343,6 +353,9 @@ for (const radius of [19, MOM_PATH_RADIUS, COMFORT_RADIUS]) {
       label: passage.label,
       point: { x: passage.x + passage.w / 2, y: passage.y + passage.h / 2 },
     })),
+    ...(balconyWasher
+      ? [{ kind: '가구 앞', label: '세탁기', point: { x: balconyWasher.x - 48, y: balconyWasher.y + balconyWasher.h / 2 } }]
+      : []),
   ];
 
   for (const target of targets) {

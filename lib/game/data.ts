@@ -152,6 +152,17 @@ export const LIVING_PLANT: Rect = {
   kind: 'plant',
 };
 
+// 사용자가 서 있던 내 방 오른쪽 발코니의 아래쪽 자리. 오른쪽 벽에 붙여
+// 슬라이딩 문과 발코니의 세로 동선을 모두 남긴다.
+export const BALCONY_WASHER: Rect = {
+  x: 1505,
+  y: 840,
+  w: 58,
+  h: 66,
+  label: '세탁기',
+  kind: 'washer',
+};
+
 export const FURNITURE: Rect[] = [
   // 거실
   LIVING_SOFA,
@@ -204,6 +215,7 @@ export const FURNITURE: Rect[] = [
   // 발코니 소품
   { x: 64, y: 194, w: 58, h: 46, label: '화분대', kind: 'plant' },
   { x: 1504, y: 476, w: 40, h: 54, label: '화분대', kind: 'plant' },
+  BALCONY_WASHER,
 ];
 
 // 형 방에는 저작권 캐릭터가 아닌 오리지널 봉제인형을 많이 배치한다.
