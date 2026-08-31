@@ -134,6 +134,24 @@ export const LIVING_PIANO: Rect = {
   kind: 'piano',
 };
 
+export const LIVING_TURTLE_HOME: Rect = {
+  x: 235,
+  y: 492,
+  w: 70,
+  h: 58,
+  label: '거북이 집',
+  kind: 'turtleHabitat',
+};
+
+export const LIVING_PLANT: Rect = {
+  x: 465,
+  y: 496,
+  w: 50,
+  h: 50,
+  label: '화분',
+  kind: 'plant',
+};
+
 export const FURNITURE: Rect[] = [
   // 거실
   LIVING_SOFA,
@@ -142,7 +160,8 @@ export const FURNITURE: Rect[] = [
   LIVING_PIANO,
   { x: 310, y: 211, w: 265, h: 50, label: '식탁', kind: 'dining' },
   { x: 445, y: 350, w: 90, h: 60, label: '테이블', kind: 'table' },
-  { x: 240, y: 496, w: 50, h: 50, label: '화분', kind: 'plant' },
+  LIVING_TURTLE_HOME,
+  LIVING_PLANT,
   // 현관
   { x: 740, y: 58, w: 38, h: 88, label: '신발장', kind: 'cabinet' },
   // 현관 바로 옆 형 방: 인형이 많고, 오른쪽 침대의 머리맡은 아래쪽을 향한다.
@@ -328,7 +347,7 @@ export const FAMILY_WAKE_POSITIONS = {
 export const INTERACTION_TEMPLATES: Omit<Interaction, 'lastUsed'>[] = [
   {
     id: 'plant',
-    x: 260,
+    x: 490,
     y: 520,
     label: '화분 건드리기',
     effect: '와장창!',

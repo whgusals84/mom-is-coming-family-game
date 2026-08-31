@@ -263,6 +263,9 @@ const livingSofa = FURNITURE.find((item) => item.kind === 'sofa');
 const livingDining = FURNITURE.find(
   (item) => item.label === '식탁' && item.x < 600,
 );
+const livingTv = FURNITURE.find((item) => item.kind === 'tv');
+const livingPlant = FURNITURE.find((item) => item.kind === 'plant' && item.x < 600);
+const turtleHome = FURNITURE.find((item) => item.kind === 'turtleHabitat');
 const restingFurniture = [
   { role: '엄마', point: FAMILY_RESTING_POSITIONS.mom, furniture: FURNITURE.find((item) => item.kind === 'sofa') },
   { role: '형', point: FAMILY_RESTING_POSITIONS.brother, furniture: FURNITURE.find((item) => item.label === '형 침대') },
@@ -289,6 +292,13 @@ if (finalPiano && livingDining) {
   const passageWidth = livingDining.x - (finalPiano.x + finalPiano.w);
   if (passageWidth < 50) failures.push(`피아노와 식탁 사이 통로가 ${passageWidth}px라 너무 좁음`);
 }
+if (!livingTv || !livingPlant || livingPlant.x <= livingTv.x + livingTv.w)
+  failures.push('거실 화분이 TV 오른쪽에 배치되지 않음');
+if (!livingTv || !turtleHome || turtleHome.x + turtleHome.w >= livingTv.x)
+  failures.push('두 마리 거북이 집이 TV 왼쪽의 기존 화분 자리에 배치되지 않음');
+const plantInteraction = INTERACTION_TEMPLATES.find((item) => item.id === 'plant');
+if (!livingPlant || !plantInteraction || plantInteraction.x < livingPlant.x || plantInteraction.x > livingPlant.x + livingPlant.w || plantInteraction.y < livingPlant.y || plantInteraction.y > livingPlant.y + livingPlant.h)
+  failures.push('화분 사고 위치가 옮긴 화분과 일치하지 않음');
 for (const passage of PASSAGES) {
   const span = Math.max(passage.w, passage.h);
   const minimum = passage.label === '욕실 문' ? 96 : MIN_COMFORTABLE_PASSAGE;

@@ -34,7 +34,7 @@ export function roundedRect(
   ctx.roundRect(x, y, w, h, r);
 }
 
-export function drawMap(ctx: CanvasRenderingContext2D) {
+export function drawMap(ctx: CanvasRenderingContext2D, time = 0) {
   ctx.fillStyle = '#e9c58e';
   ctx.fillRect(0, 0, 1600, 1000);
   for (const room of ROOMS) {
@@ -70,7 +70,7 @@ export function drawMap(ctx: CanvasRenderingContext2D) {
     );
   }
 
-  for (const item of FURNITURE) drawFurniture(ctx, item);
+  for (const item of FURNITURE) drawFurniture(ctx, item, time);
   for (const door of DOORS)
     drawDoor(
       ctx,
@@ -87,6 +87,7 @@ export function drawMap(ctx: CanvasRenderingContext2D) {
 function drawFurniture(
   ctx: CanvasRenderingContext2D,
   item: (typeof FURNITURE)[number],
+  time: number,
 ) {
   const palettes: Record<string, [string, string]> = {
     sofa: ['#ea806b', '#a9453f'],
@@ -105,6 +106,7 @@ function drawFurniture(
     toilet: ['#f7fbfb', '#93aaa9'],
     sink: ['#d8efed', '#77a6a0'],
     tub: ['#d2e9ef', '#6a9aaa'],
+    turtleHabitat: ['#8acfc3', '#356e67'],
   };
   const [fill, edge] = palettes[item.kind ?? ''] ?? ['#c99462', '#805836'];
   ctx.save();
@@ -173,6 +175,15 @@ function drawFurniture(
       );
       ctx.fill();
     }
+  } else if (item.kind === 'turtleHabitat') {
+    roundedRect(ctx, item.x + 7, item.y + 7, item.w - 14, item.h - 14, 12);
+    ctx.fillStyle = '#c8eee3';
+    ctx.fill();
+    ctx.strokeStyle = '#fff8d5';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    drawTinyTurtle(ctx, item.x + 23 + Math.sin(time * 1.3) * 3, item.y + 22, .15, '#5e9b57');
+    drawTinyTurtle(ctx, item.x + 48 + Math.cos(time * 1.1) * 3, item.y + 37, Math.PI + .2, '#7a9f49');
   } else if (item.kind === 'bed') {
     ctx.save();
     ctx.translate(item.x + item.w / 2, item.y + item.h / 2);
@@ -242,14 +253,49 @@ function drawFurniture(
     ctx.fill();
   }
   ctx.fillStyle = 'rgba(49,37,31,.75)';
-  ctx.font = '800 13px system-ui';
+  ctx.font = `800 ${item.kind === 'turtleHabitat' ? 10 : 13}px system-ui`;
   ctx.textAlign = 'center';
-  ctx.fillText(item.label ?? '', item.x + item.w / 2, item.y + item.h / 2 + 5);
+  ctx.fillText(item.label ?? '', item.x + item.w / 2, item.kind === 'turtleHabitat' ? item.y + item.h - 4 : item.y + item.h / 2 + 5);
   // 이 점선 사각형이 실제 충돌 판정과 완전히 같은 가구의 바닥 면적이다.
   ctx.setLineDash([7, 5]);
   ctx.strokeStyle = 'rgba(57,43,36,.72)';
   ctx.lineWidth = 2.5;
   ctx.strokeRect(item.x + 1.5, item.y + 1.5, item.w - 3, item.h - 3);
+  ctx.restore();
+}
+
+function drawTinyTurtle(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  shellColor: string,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = '#466f45';
+  for (const [legX, legY] of [[-5, -6], [4, -6], [-5, 6], [4, 6]]) {
+    ctx.beginPath();
+    ctx.arc(legX, legY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(10, 0, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 9, 7, 0, 0, Math.PI * 2);
+  ctx.fillStyle = shellColor;
+  ctx.fill();
+  ctx.strokeStyle = '#35583a';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-5, 0);
+  ctx.lineTo(5, 0);
+  ctx.moveTo(0, -5);
+  ctx.lineTo(0, 5);
+  ctx.stroke();
   ctx.restore();
 }
 

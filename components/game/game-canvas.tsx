@@ -587,7 +587,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       const shakeY = shakeUntil > now ? (Math.random() - .5) * shakePower : 0;
       ctx.setTransform(resize.dpr, 0, 0, resize.dpr, 0, 0); ctx.clearRect(0, 0, resize.width, resize.height);
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
-      drawMap(ctx);
+      drawMap(ctx, now);
 
       if (isChase) {
         for (const interaction of interactions) {
