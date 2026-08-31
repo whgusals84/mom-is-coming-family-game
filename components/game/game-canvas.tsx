@@ -559,7 +559,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
     const onKeyDown = (event: KeyboardEvent) => {
       const code = event.code;
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(code)) event.preventDefault();
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE'].includes(code)) event.preventDefault();
       unlockGameAudio();
       keys.add(code);
       const now = clock();
@@ -633,8 +633,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         }
 
         const touch = touchRef.current;
-        let dx = Number(keys.has('KeyD') || keys.has('ArrowRight') || touch.right) - Number(keys.has('KeyA') || keys.has('ArrowLeft') || touch.left);
-        let dy = Number(keys.has('KeyS') || keys.has('ArrowDown') || touch.down) - Number(keys.has('KeyW') || keys.has('ArrowUp') || touch.up);
+        let dx = Number(keys.has('ArrowRight') || touch.right) - Number(keys.has('ArrowLeft') || touch.left);
+        let dy = Number(keys.has('ArrowDown') || touch.down) - Number(keys.has('ArrowUp') || touch.up);
         if (touch.dash) { touch.dash = false; tryDash(now); }
         if (touch.interact) { touch.interact = false; doInteraction(now); }
         const length = Math.hypot(dx, dy) || 1; dx /= length; dy /= length;
