@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Download, Gamepad2, HelpCircle, MapPin, MoreHorizontal, RotateCw, Trash2, Trophy, UsersRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Gamepad2, HelpCircle, MoreHorizontal, Trophy, UsersRound, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,33 +13,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
-import { EDITABLE_LIVING_TABLE, INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
-import {
-  FURNITURE_PLAN_CATALOG,
-  FURNITURE_PLAN_STORAGE_KEY,
-  EDITABLE_LIVING_TABLE_PLAN_ID,
-  MAX_FURNITURE_PLAN_SIZE,
-  MAX_FURNITURE_PLAN_MARKERS,
-  MIN_FURNITURE_PLAN_SIZE,
-  clampFurniturePlanMarker,
-  createFurniturePlanMarker,
-  ensureEditableLivingTableMarker,
-  findFurniturePlanMarkerAtPoint,
-  getFurniturePlanDefinition,
-  getFurniturePlanFootprint,
-  pointHitsFurniturePlanResizeHandle,
-  parseFurniturePlan,
-  pointHitsFurniturePlanMarker,
-  resizeFurniturePlanMarkerFromHandle,
-  screenToFurniturePlanWorld,
-  serializeFurniturePlan,
-  setFurniturePlanFootprintSize,
-} from '@/lib/game/furniture-plan';
+import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
 import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
 import { clamp, distance, findPath, moveCircle } from '@/lib/game/map';
-import { drawCharacter, drawFurniturePlanMarkers, drawMap, drawMarker, drawSpeech, roundedRect } from '@/lib/game/renderer';
+import { drawCharacter, drawMap, drawMarker, drawSpeech, roundedRect } from '@/lib/game/renderer';
 import { SpriteBank } from '@/lib/game/sprites';
-import type { FurniturePlanKind, FurniturePlanMarker, GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
+import type { GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
 
 type GamePhase = 'explore' | 'chase';
 type GameCanvasProps = {
@@ -62,18 +40,6 @@ type Bubble = { role: 'player' | 'mom' | 'brother' | 'dad'; text: string; until:
 type Effect = Point & { text: string; color: string; until: number; born: number };
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
 type TouchControl = 'left' | 'right' | 'up' | 'down' | 'dash' | 'interact';
-type FurniturePlanCamera = { cameraX: number; cameraY: number; zoom: number; shakeX: number; shakeY: number };
-type FurniturePlanDrag = {
-  pointerId: number;
-  markerId: string;
-  mode: 'move' | 'resize';
-  offsetX: number;
-  offsetY: number;
-  startClientX: number;
-  startClientY: number;
-  original: FurniturePlanMarker;
-  moved: boolean;
-};
 
 const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
@@ -99,384 +65,20 @@ function formatTime(value: number) {
   return `${min}:${sec}`;
 }
 
-function createFurniturePlanId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    return `furniture-${crypto.getRandomValues(new Uint32Array(2)).join('-')}`;
-  }
-  return `furniture-${performance.now().toString(36)}`;
-}
-
 export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onOpenCharacters }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef({ left: false, right: false, up: false, down: false, dash: false, interact: false });
   const soundRef = useRef(true);
   const phaseRef = useRef<GamePhase>(initialPhase);
-  const furniturePlanMarkersRef = useRef<FurniturePlanMarker[]>([]);
-  const furniturePlanModeRef = useRef(false);
-  const furniturePlanToolRef = useRef<FurniturePlanKind>('sofa');
-  const selectedFurniturePlanMarkerRef = useRef<string | null>(null);
-  const furniturePlanCameraRef = useRef<FurniturePlanCamera>({ cameraX: 0, cameraY: 0, zoom: 1, shakeX: 0, shakeY: 0 });
-  const furniturePlanPlayerRef = useRef<Point>({ ...LANDMARKS.playerSpawn });
-  const furniturePlanDragRef = useRef<FurniturePlanDrag | null>(null);
-  const furniturePlanLoadedRef = useRef(false);
-  const furniturePlanPlacementArmedRef = useRef(false);
   const [soundOn, setSoundOn] = useState(true);
   const [phase, setPhase] = useState<GamePhase>(initialPhase);
   const [hud, setHud] = useState(INITIAL_HUD);
-  const [furniturePlanMode, setFurniturePlanMode] = useState(false);
-  const [furniturePlanPanelOpen, setFurniturePlanPanelOpen] = useState(false);
-  const [furniturePlanTool, setFurniturePlanTool] = useState<FurniturePlanKind>('sofa');
-  const [furniturePlanMarkers, setFurniturePlanMarkers] = useState<FurniturePlanMarker[]>([]);
-  const [selectedFurniturePlanMarkerId, setSelectedFurniturePlanMarkerId] = useState<string | null>(null);
-  const [furniturePlanStatus, setFurniturePlanStatus] = useState('가구를 고르고 집 바닥을 눌러 표시하세요.');
-  const [furniturePlanPlacementArmed, setFurniturePlanPlacementArmed] = useState(false);
-
-  const setFurniturePlanPlacement = (armed: boolean) => {
-    furniturePlanPlacementArmedRef.current = armed;
-    setFurniturePlanPlacementArmed(armed);
-  };
 
   const beginChase = () => {
     unlockGameAudio();
-    furniturePlanModeRef.current = false;
-    setFurniturePlanMode(false);
-    setFurniturePlanPanelOpen(false);
-    setFurniturePlanPlacement(false);
     phaseRef.current = 'chase';
     setPhase('chase');
-  };
-
-  const ensureFurniturePlanLoaded = () => {
-    if (furniturePlanLoadedRef.current || typeof window === 'undefined') return;
-    furniturePlanLoadedRef.current = true;
-    try {
-      const loaded = ensureEditableLivingTableMarker(
-        parseFurniturePlan(localStorage.getItem(FURNITURE_PLAN_STORAGE_KEY)),
-        EDITABLE_LIVING_TABLE,
-      );
-      furniturePlanMarkersRef.current = loaded;
-      setFurniturePlanMarkers(loaded);
-      localStorage.setItem(FURNITURE_PLAN_STORAGE_KEY, serializeFurniturePlan(loaded));
-    } catch {
-      furniturePlanMarkersRef.current = [];
-      setFurniturePlanStatus('이 기기에서는 자동 저장을 사용할 수 없지만 표시는 계속할 수 있어요.');
-    }
-  };
-
-  useEffect(() => {
-    const timer = window.setTimeout(ensureFurniturePlanLoaded, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const commitFurniturePlan = (next: FurniturePlanMarker[], status?: string) => {
-    const prepared = next
-      .slice(0, MAX_FURNITURE_PLAN_MARKERS)
-      .map((marker) => clampFurniturePlanMarker(marker, WORLD));
-    furniturePlanMarkersRef.current = prepared;
-    let saveFailed = false;
-    try {
-      localStorage.setItem(FURNITURE_PLAN_STORAGE_KEY, serializeFurniturePlan(prepared));
-    } catch {
-      saveFailed = true;
-    }
-    setFurniturePlanMarkers(prepared);
-    if (saveFailed) setFurniturePlanStatus('표시는 유지되지만 이 기기에는 자동 저장되지 않았어요.');
-    else if (status) setFurniturePlanStatus(status);
-  };
-
-  const selectFurniturePlanMarker = (id: string | null) => {
-    selectedFurniturePlanMarkerRef.current = id;
-    setSelectedFurniturePlanMarkerId(id);
-  };
-
-  const enterFurniturePlanMode = () => {
-    ensureFurniturePlanLoaded();
-    furniturePlanModeRef.current = true;
-    setFurniturePlanMode(true);
-    setFurniturePlanPanelOpen(true);
-    setFurniturePlanPlacement(false);
-    setFurniturePlanStatus('표시용 가구를 고른 뒤 집 바닥을 누르세요. 게임 충돌에는 아직 반영되지 않아요.');
-  };
-
-  const closeFurniturePlanMode = () => {
-    furniturePlanModeRef.current = false;
-    furniturePlanDragRef.current = null;
-    setFurniturePlanMode(false);
-    setFurniturePlanPanelOpen(false);
-    setFurniturePlanPlacement(false);
-    selectFurniturePlanMarker(null);
-  };
-
-  const toggleFurniturePlanPanel = () => {
-    if (!furniturePlanModeRef.current) enterFurniturePlanMode();
-    else setFurniturePlanPanelOpen((value) => !value);
-  };
-
-  const chooseFurniturePlanTool = (kind: FurniturePlanKind) => {
-    const definition = getFurniturePlanDefinition(kind);
-    furniturePlanToolRef.current = kind;
-    setFurniturePlanTool(kind);
-    selectFurniturePlanMarker(null);
-    setFurniturePlanPlacement(true);
-    setFurniturePlanStatus(`${definition.icon} ${definition.label} 1개 추가 준비 · 원하는 바닥을 누르세요.`);
-    if (window.matchMedia('(max-width: 680px)').matches) setFurniturePlanPanelOpen(false);
-  };
-
-  const addFurniturePlanMarkerAt = (point: Point) => {
-    ensureFurniturePlanLoaded();
-    if (furniturePlanMarkersRef.current.length >= MAX_FURNITURE_PLAN_MARKERS) {
-      setFurniturePlanStatus(`가구 표시는 최대 ${MAX_FURNITURE_PLAN_MARKERS}개까지 만들 수 있어요.`);
-      return null;
-    }
-    const marker = createFurniturePlanMarker(furniturePlanToolRef.current, point, createFurniturePlanId());
-    commitFurniturePlan(
-      [...furniturePlanMarkersRef.current, marker],
-      `${getFurniturePlanDefinition(marker.kind).icon} ${marker.label} 위치를 자동 저장했어요.`,
-    );
-    selectFurniturePlanMarker(marker.id);
-    return marker;
-  };
-
-  const canvasPointToWorld = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return screenToFurniturePlanWorld(
-      { x: event.clientX - rect.left, y: event.clientY - rect.top },
-      furniturePlanCameraRef.current,
-    );
-  };
-
-  const onFurniturePlanPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!furniturePlanModeRef.current || !event.isPrimary) return;
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    event.preventDefault();
-    const point = canvasPointToWorld(event);
-    const hitPadding = (event.pointerType === 'touch' ? 16 : 7) / furniturePlanCameraRef.current.zoom;
-    const selectedMarker = furniturePlanMarkersRef.current.find(
-      (item) => item.id === selectedFurniturePlanMarkerRef.current,
-    );
-    const resizeSelected = selectedMarker
-      ? pointHitsFurniturePlanResizeHandle(point, selectedMarker, 24 / furniturePlanCameraRef.current.zoom)
-      : false;
-    let marker = findFurniturePlanMarkerAtPoint(furniturePlanMarkersRef.current, point, hitPadding);
-    if (resizeSelected) marker = selectedMarker;
-    if (!marker) {
-      if (!furniturePlanPlacementArmedRef.current) {
-        selectFurniturePlanMarker(null);
-        setFurniturePlanStatus('빈 바닥에서는 가구가 생기지 않아요. 기존 가구를 누르거나 추가할 가구를 먼저 고르세요.');
-        event.currentTarget.style.cursor = 'crosshair';
-        return;
-      }
-      marker = addFurniturePlanMarkerAt(point) ?? undefined;
-      setFurniturePlanPlacement(false);
-    } else if (!resizeSelected) {
-      setFurniturePlanPlacement(false);
-    }
-    if (!marker) return;
-    selectFurniturePlanMarker(marker.id);
-    furniturePlanDragRef.current = {
-      pointerId: event.pointerId,
-      markerId: marker.id,
-      mode: resizeSelected ? 'resize' : 'move',
-      offsetX: point.x - marker.x,
-      offsetY: point.y - marker.y,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      original: { ...marker },
-      moved: false,
-    };
-    event.currentTarget.style.cursor = resizeSelected ? 'nwse-resize' : 'grabbing';
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-
-  const onFurniturePlanPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const drag = furniturePlanDragRef.current;
-    if (!drag) {
-      if (!furniturePlanModeRef.current || event.pointerType !== 'mouse') return;
-      const point = canvasPointToWorld(event);
-      const selectedMarker = furniturePlanMarkersRef.current.find(
-        (item) => item.id === selectedFurniturePlanMarkerRef.current,
-      );
-      if (selectedMarker && pointHitsFurniturePlanResizeHandle(point, selectedMarker, 24 / furniturePlanCameraRef.current.zoom)) {
-        event.currentTarget.style.cursor = 'nwse-resize';
-      } else if (furniturePlanMarkersRef.current.some((item) => pointHitsFurniturePlanMarker(point, item, 8))) {
-        event.currentTarget.style.cursor = 'grab';
-      } else {
-        event.currentTarget.style.cursor = 'crosshair';
-      }
-      return;
-    }
-    if (drag.pointerId !== event.pointerId || !event.isPrimary) return;
-    event.preventDefault();
-    if (!drag.moved && Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) < 8) return;
-    drag.moved = true;
-    const point = canvasPointToWorld(event);
-    furniturePlanMarkersRef.current = furniturePlanMarkersRef.current.map((marker) =>
-      marker.id === drag.markerId
-        ? drag.mode === 'resize'
-          ? resizeFurniturePlanMarkerFromHandle(drag.original, point, WORLD)
-          : clampFurniturePlanMarker({ ...marker, x: point.x - drag.offsetX, y: point.y - drag.offsetY }, WORLD)
-        : marker,
-    );
-    setFurniturePlanMarkers(furniturePlanMarkersRef.current);
-  };
-
-  const finishFurniturePlanPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const drag = furniturePlanDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    furniturePlanDragRef.current = null;
-    commitFurniturePlan(
-      furniturePlanMarkersRef.current,
-      drag.moved
-        ? drag.mode === 'resize'
-          ? '모서리를 끌어 바꾼 가구 크기를 자동 저장했어요.'
-          : '가구 표시의 새 위치를 자동 저장했어요.'
-        : '가구 표시를 선택했어요.',
-    );
-    event.currentTarget.style.cursor = 'crosshair';
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const cancelFurniturePlanPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const drag = furniturePlanDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    furniturePlanDragRef.current = null;
-    furniturePlanMarkersRef.current = furniturePlanMarkersRef.current.map((marker) =>
-      marker.id === drag.markerId ? drag.original : marker,
-    );
-    setFurniturePlanMarkers(furniturePlanMarkersRef.current);
-    event.currentTarget.style.cursor = 'crosshair';
-  };
-
-  const placeFurniturePlanAtPlayer = () => {
-    const marker = addFurniturePlanMarkerAt(furniturePlanPlayerRef.current);
-    if (marker) setFurniturePlanPlacement(false);
-    if (marker && window.matchMedia('(max-width: 680px)').matches) setFurniturePlanPanelOpen(false);
-  };
-
-  const updateSelectedFurniturePlanLabel = (label: string) => {
-    const id = selectedFurniturePlanMarkerRef.current;
-    if (!id) return;
-    commitFurniturePlan(
-      furniturePlanMarkersRef.current.map((marker) =>
-        marker.id === id ? { ...marker, label: label.slice(0, 24) } : marker,
-      ),
-    );
-  };
-
-  const restoreSelectedFurniturePlanLabel = () => {
-    const marker = furniturePlanMarkersRef.current.find((item) => item.id === selectedFurniturePlanMarkerRef.current);
-    if (marker && !marker.label.trim()) updateSelectedFurniturePlanLabel(getFurniturePlanDefinition(marker.kind).label);
-  };
-
-  const rotateSelectedFurniturePlanMarker = () => {
-    const id = selectedFurniturePlanMarkerRef.current;
-    if (!id) return;
-    commitFurniturePlan(
-      furniturePlanMarkersRef.current.map((marker) =>
-        marker.id === id
-          ? clampFurniturePlanMarker({ ...marker, rotation: ((marker.rotation + 90) % 360) as FurniturePlanMarker['rotation'] }, WORLD)
-          : marker,
-      ),
-      '가구 방향을 90도 돌려서 저장했어요.',
-    );
-  };
-
-  const resizeSelectedFurniturePlanMarker = (axis: 'width' | 'height', value: number) => {
-    const id = selectedFurniturePlanMarkerRef.current;
-    if (!id) return;
-    commitFurniturePlan(
-      furniturePlanMarkersRef.current.map((marker) =>
-        marker.id === id
-          ? clampFurniturePlanMarker(setFurniturePlanFootprintSize(marker, axis, value), WORLD)
-          : marker,
-      ),
-      '가구 표시 크기를 자동 저장했어요.',
-    );
-  };
-
-  const deleteSelectedFurniturePlanMarker = () => {
-    const id = selectedFurniturePlanMarkerRef.current;
-    if (!id) return;
-    if (id === EDITABLE_LIVING_TABLE_PLAN_ID) {
-      setFurniturePlanStatus('기존 테이블은 삭제하지 않고 위치와 크기만 바꿀 수 있어요.');
-      return;
-    }
-    const marker = furniturePlanMarkersRef.current.find((item) => item.id === id);
-    commitFurniturePlan(
-      furniturePlanMarkersRef.current.filter((item) => item.id !== id),
-      marker ? `${marker.label || getFurniturePlanDefinition(marker.kind).label} 표시를 삭제했어요.` : '선택한 표시를 삭제했어요.',
-    );
-    selectFurniturePlanMarker(null);
-  };
-
-  const clearFurniturePlan = () => {
-    if (!furniturePlanMarkersRef.current.length) return;
-    if (!window.confirm('추가한 가구 표시를 모두 지울까요? 기존 테이블은 유지됩니다.')) return;
-    const originalTable = furniturePlanMarkersRef.current.find(
-      (marker) => marker.id === EDITABLE_LIVING_TABLE_PLAN_ID,
-    );
-    commitFurniturePlan(originalTable ? [originalTable] : [], '추가한 가구 표시를 모두 지웠어요. 기존 테이블은 유지됩니다.');
-    selectFurniturePlanMarker(originalTable?.id ?? null);
-  };
-
-  const exportFurniturePlan = async () => {
-    ensureFurniturePlanLoaded();
-    if (!furniturePlanMarkersRef.current.length) {
-      setFurniturePlanStatus('먼저 가구 위치를 하나 이상 표시해 주세요.');
-      return;
-    }
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = WORLD.width;
-    exportCanvas.height = WORLD.height + 84;
-    const exportContext = exportCanvas.getContext('2d');
-    if (!exportContext) {
-      setFurniturePlanStatus('배치도 이미지를 만들 수 없어요. 다시 시도해 주세요.');
-      return;
-    }
-    exportContext.fillStyle = '#fff8e8';
-    exportContext.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-    exportContext.fillStyle = '#392b24';
-    exportContext.font = '1000 28px system-ui';
-    exportContext.fillText('엄마가 온다! · 우리 집 가구 배치 표시', 26, 35);
-    exportContext.fillStyle = '#6f5a50';
-    exportContext.font = '800 15px system-ui';
-    exportContext.fillText(`보라색 점선 ${furniturePlanMarkersRef.current.length}개 · 번호와 화살표 방향을 확인해 주세요`, 27, 62);
-    exportContext.save();
-    exportContext.translate(0, 84);
-    drawMap(exportContext, { hideEditableLivingTable: true });
-    drawFurniturePlanMarkers(exportContext, furniturePlanMarkersRef.current);
-    exportContext.restore();
-    const blob = await new Promise<Blob | null>((resolve) => exportCanvas.toBlob(resolve, 'image/png'));
-    if (!blob) {
-      setFurniturePlanStatus('배치도 이미지 생성에 실패했어요. 다시 시도해 주세요.');
-      return;
-    }
-    const filename = '엄마가-온다-가구-배치도.png';
-    const file = new File([blob], filename, { type: 'image/png' });
-    if (navigator.maxTouchPoints > 0 && navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: '우리 집 가구 배치도' });
-        setFurniturePlanStatus('배치도 공유 화면을 열었어요. 이 이미지를 저에게 보내면 그대로 반영할 수 있어요.');
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          setFurniturePlanStatus('배치도 공유를 취소했어요. 표시는 그대로 저장되어 있어요.');
-          return;
-        }
-      }
-    }
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.rel = 'noopener';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 3000);
-    setFurniturePlanStatus('전체 집 배치도를 PNG 이미지로 저장했어요. 이 이미지를 저에게 보내 주세요.');
   };
 
   useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
@@ -698,8 +300,6 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     window.addEventListener('orientationchange', resizeCanvas);
 
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
       const code = event.code;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(code)) event.preventDefault();
       keys.add(code);
@@ -708,23 +308,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (code === 'KeyE' && !event.repeat) doInteraction(now);
     };
     const onKeyUp = (event: KeyboardEvent) => keys.delete(event.code);
-    const preventTouchScroll = (event: TouchEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('.furniture-plan-panel')) return;
-      event.preventDefault();
-    };
+    const preventTouchScroll = (event: TouchEvent) => event.preventDefault();
     const preventContextMenu = (event: MouseEvent) => event.preventDefault();
     const releaseTouch = () => {
       touchRef.current.left = false; touchRef.current.right = false;
       touchRef.current.up = false; touchRef.current.down = false;
-      const drag = furniturePlanDragRef.current;
-      if (drag) {
-        furniturePlanMarkersRef.current = furniturePlanMarkersRef.current.map((marker) =>
-          marker.id === drag.markerId ? drag.original : marker,
-        );
-        furniturePlanDragRef.current = null;
-        setFurniturePlanMarkers(furniturePlanMarkersRef.current);
-      }
     };
     window.addEventListener('keydown', onKeyDown, { passive: false }); window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', releaseTouch);
@@ -866,18 +454,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       const cameraY = clamp(player.y - viewH / 2, 0, Math.max(0, WORLD.height - viewH));
       const shakeX = shakeUntil > now ? (Math.random() - .5) * shakePower : 0;
       const shakeY = shakeUntil > now ? (Math.random() - .5) * shakePower : 0;
-      furniturePlanPlayerRef.current = { x: player.x, y: player.y };
-      furniturePlanCameraRef.current = { cameraX, cameraY, zoom, shakeX, shakeY };
       ctx.setTransform(resize.dpr, 0, 0, resize.dpr, 0, 0); ctx.clearRect(0, 0, resize.width, resize.height);
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
-      drawMap(ctx, {
-        hideEditableLivingTable: !isChase && furniturePlanMarkersRef.current.some(
-          (marker) => marker.id === EDITABLE_LIVING_TABLE_PLAN_ID,
-        ),
-      });
-      if (!isChase && furniturePlanMarkersRef.current.length) {
-        drawFurniturePlanMarkers(ctx, furniturePlanMarkersRef.current, selectedFurniturePlanMarkerRef.current);
-      }
+      drawMap(ctx);
 
       if (isChase) {
         for (const interaction of interactions) {
@@ -938,13 +517,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         setHud({
           score: Math.floor(score), elapsed, rage, rageLabel: rageLabel(rage), momMood: mom.active ? mom.mood : 'calm',
           momMoodLabel: mom.active ? moodLabel(mom.mood) : '😐 아직 안 옴', mission: { ...mission },
-          prompt: furniturePlanModeRef.current
-            ? `${getFurniturePlanDefinition(furniturePlanToolRef.current).icon} ${getFurniturePlanDefinition(furniturePlanToolRef.current).label} 표시 중 · 바닥을 누르거나 표시를 드래그하세요`
-            : blockedHintUntil > now
-              ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
-              : isChase
-                ? (nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'))
-                : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
+          prompt: blockedHintUntil > now
+            ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
+            : isChase
+              ? (nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'))
+              : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
           itemText: itemTextUntil > now ? itemText : '', dashReady: clamp(1 - (player.dashCooldownUntil - now) / 1.35, 0, 1),
           health: Math.floor(health), maxHealth: HEALTH_RULES.max, recovering: passiveRecoveryActive,
           recoveryLabel: health >= HEALTH_RULES.max
@@ -988,187 +565,9 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     touchRef.current[key] = false;
   };
 
-  const selectedFurniturePlanMarker = furniturePlanMarkers.find(
-    (marker) => marker.id === selectedFurniturePlanMarkerId,
-  );
-  const selectedFurniturePlanFootprint = selectedFurniturePlanMarker
-    ? getFurniturePlanFootprint(selectedFurniturePlanMarker)
-    : null;
-  const selectedFurniturePlanMarkerIsOriginalTable =
-    selectedFurniturePlanMarker?.id === EDITABLE_LIVING_TABLE_PLAN_ID;
-  const activeFurniturePlanDefinition = getFurniturePlanDefinition(furniturePlanTool);
-
   return (
-    <div ref={stageRef} className="game-stage" data-layout-editing={furniturePlanMode || undefined}>
-      <canvas
-        ref={canvasRef}
-        aria-label="집 자유 탐험 및 엄마가 온다 게임 화면"
-        aria-describedby={furniturePlanMode ? 'furniture-plan-help' : undefined}
-        onPointerDown={onFurniturePlanPointerDown}
-        onPointerMove={onFurniturePlanPointerMove}
-        onPointerUp={finishFurniturePlanPointer}
-        onPointerCancel={cancelFurniturePlanPointer}
-        onLostPointerCapture={cancelFurniturePlanPointer}
-      />
-
-      {phase === 'explore' && (
-        <>
-          <Button
-            className={`furniture-plan-trigger ${furniturePlanMode ? 'is-active' : ''}`}
-            onClick={toggleFurniturePlanPanel}
-            aria-expanded={furniturePlanMode && furniturePlanPanelOpen}
-            aria-controls="furniture-plan-panel"
-            aria-pressed={furniturePlanMode}
-          >
-            <MapPin /> <span>가구 표시</span>
-          </Button>
-
-          {furniturePlanMode && furniturePlanPanelOpen && (
-            <aside id="furniture-plan-panel" className="furniture-plan-panel" aria-label="가구 배치 표시 도구">
-              <header className="furniture-plan-heading">
-                <div>
-                  <strong>가구 배치 표시</strong>
-                  <small>{furniturePlanMarkers.length}개 자동 저장됨</small>
-                </div>
-                <Button size="icon" variant="ghost" onClick={closeFurniturePlanMode} aria-label="가구 배치 표시 끝내기">
-                  <X />
-                </Button>
-              </header>
-              <p id="furniture-plan-help" className="furniture-plan-help">
-                기존 가구는 직접 눌러 선택하세요. 새 가구는 종류를 고른 뒤 빈 바닥을 한 번 누를 때만 추가됩니다.
-                본체를 끌면 이동하고, 선택 후 ↘ 손잡이를 끌면 크기가 바뀝니다.
-                보라색 가구는 제안용이며 게임 속 충돌은 바뀌지 않습니다.
-              </p>
-
-              <fieldset className="furniture-plan-fieldset">
-                <legend>새 가구 1개 추가</legend>
-                <div className="furniture-plan-catalog">
-                  {FURNITURE_PLAN_CATALOG.map((item) => (
-                    <button
-                      key={item.kind}
-                      type="button"
-                      className={furniturePlanPlacementArmed && furniturePlanTool === item.kind ? 'is-selected' : ''}
-                      aria-pressed={furniturePlanPlacementArmed && furniturePlanTool === item.kind}
-                      onClick={() => chooseFurniturePlanTool(item.kind)}
-                    >
-                      <span>{item.icon}</span>{item.label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-
-              <Button className="furniture-plan-at-player" variant="secondary" onClick={placeFurniturePlanAtPlayer}>
-                <MapPin /> 현재 내 위치에 {activeFurniturePlanDefinition.label} 표시
-              </Button>
-
-              {furniturePlanMarkers.length > 0 && (
-                <section className="furniture-plan-marker-section" aria-label="표시한 가구 목록">
-                  <div className="furniture-plan-section-label">표시 목록</div>
-                  <div className="furniture-plan-marker-list">
-                    {furniturePlanMarkers.map((marker, index) => (
-                      <button
-                        key={marker.id}
-                        type="button"
-                        className={selectedFurniturePlanMarkerId === marker.id ? 'is-selected' : ''}
-                        aria-pressed={selectedFurniturePlanMarkerId === marker.id}
-                        onClick={() => {
-                          setFurniturePlanPlacement(false);
-                          selectFurniturePlanMarker(marker.id);
-                        }}
-                      >
-                        {index + 1}. {getFurniturePlanDefinition(marker.kind).icon} {marker.label || getFurniturePlanDefinition(marker.kind).label}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              <section className="furniture-plan-selected" aria-label="선택한 가구 표시 편집">
-                <label htmlFor="furniture-plan-label">선택한 표시 이름</label>
-                <Input
-                  id="furniture-plan-label"
-                  value={selectedFurniturePlanMarker?.label ?? ''}
-                  maxLength={24}
-                  placeholder="지도에 표시할 이름"
-                  disabled={!selectedFurniturePlanMarker || selectedFurniturePlanMarkerIsOriginalTable}
-                  onChange={(event) => updateSelectedFurniturePlanLabel(event.target.value)}
-                  onBlur={restoreSelectedFurniturePlanLabel}
-                />
-                {selectedFurniturePlanMarker && selectedFurniturePlanFootprint && (
-                  <div className="furniture-plan-size" aria-label="선택한 가구 표시 크기">
-                    <div className="furniture-plan-size-heading">
-                      <span>표시 크기</span>
-                      <output>{Math.round(selectedFurniturePlanFootprint.w)} × {Math.round(selectedFurniturePlanFootprint.h)}</output>
-                    </div>
-                    {([
-                      ['width', '가로', selectedFurniturePlanFootprint.w],
-                      ['height', '세로', selectedFurniturePlanFootprint.h],
-                    ] as const).map(([axis, label, value]) => (
-                      <div className="furniture-plan-size-row" key={axis}>
-                        <label htmlFor={`furniture-plan-${axis}`}>{label}</label>
-                        <button
-                          type="button"
-                          aria-label={`${label} 크기 줄이기`}
-                          onClick={() => resizeSelectedFurniturePlanMarker(axis, value - 10)}
-                        >−</button>
-                        <input
-                          id={`furniture-plan-${axis}`}
-                          type="range"
-                          min={MIN_FURNITURE_PLAN_SIZE}
-                          max={MAX_FURNITURE_PLAN_SIZE}
-                          step={2}
-                          value={value}
-                          onChange={(event) => resizeSelectedFurniturePlanMarker(axis, Number(event.target.value))}
-                        />
-                        <button
-                          type="button"
-                          aria-label={`${label} 크기 늘리기`}
-                          onClick={() => resizeSelectedFurniturePlanMarker(axis, value + 10)}
-                        >+</button>
-                        <output>{Math.round(value)}</output>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="furniture-plan-edit-actions">
-                  <Button variant="secondary" onClick={rotateSelectedFurniturePlanMarker} disabled={!selectedFurniturePlanMarker}>
-                    <RotateCw /> 90° 회전
-                  </Button>
-                  <Button variant="destructive" onClick={deleteSelectedFurniturePlanMarker} disabled={!selectedFurniturePlanMarker || selectedFurniturePlanMarkerIsOriginalTable}>
-                    <Trash2 /> 선택 삭제
-                  </Button>
-                </div>
-              </section>
-
-              <div className="furniture-plan-actions">
-                <Button onClick={exportFurniturePlan} disabled={!furniturePlanMarkers.length}>
-                  <Download /> 배치도 저장·공유
-                </Button>
-                <Button variant="outline" onClick={clearFurniturePlan} disabled={!furniturePlanMarkers.length}>
-                  모두 지우기
-                </Button>
-                <Button variant="secondary" onClick={closeFurniturePlanMode}>완료</Button>
-              </div>
-              <output className="furniture-plan-status" aria-live="polite" aria-atomic="true">
-                {furniturePlanStatus}
-              </output>
-            </aside>
-          )}
-
-          {furniturePlanMode && !furniturePlanPanelOpen && (
-            <output className="furniture-plan-active-tool">
-              <button type="button" onClick={() => setFurniturePlanPanelOpen(true)} aria-label="가구 배치 도구 열기">
-                {furniturePlanPlacementArmed
-                  ? `${activeFurniturePlanDefinition.icon} ${activeFurniturePlanDefinition.label} 1개 · 바닥을 탭하세요`
-                  : selectedFurniturePlanMarker
-                    ? `${getFurniturePlanDefinition(selectedFurniturePlanMarker.kind).icon} ${selectedFurniturePlanMarker.label} · 끌어서 이동`
-                    : '가구를 누르거나 새 가구를 고르세요'}
-              </button>
-              <button type="button" onClick={closeFurniturePlanMode}>완료</button>
-            </output>
-          )}
-        </>
-      )}
+    <div ref={stageRef} className="game-stage">
+      <canvas ref={canvasRef} aria-label="집 자유 탐험 및 엄마가 온다 게임 화면" />
 
       {phase === 'explore' && (
         <header className="explore-toolbar">
@@ -1234,10 +633,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
       <div className="mobile-controls" aria-label="터치 조작">
         <div className="dpad">
-          <button aria-label="위로 이동" className="up" data-control="up" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▲</button>
-          <button aria-label="왼쪽으로 이동" className="left" data-control="left" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>◀</button>
-          <button aria-label="오른쪽으로 이동" className="right" data-control="right" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▶</button>
-          <button aria-label="아래로 이동" className="down" data-control="down" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▼</button>
+          <button className="up" data-control="up" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▲</button>
+          <button className="left" data-control="left" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>◀</button>
+          <button className="right" data-control="right" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▶</button>
+          <button className="down" data-control="down" onPointerDown={press} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}>▼</button>
         </div>
         <div className="action-buttons">
           <button className="touch-dash" data-control="dash" onPointerDown={press}>DASH<small>대시</small></button>

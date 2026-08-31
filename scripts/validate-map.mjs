@@ -1,5 +1,6 @@
 import {
   INTERACTION_TEMPLATES,
+  FURNITURE,
   LANDMARKS,
   NPC_SPOTS,
   PASSAGES,
@@ -255,6 +256,14 @@ const escapeRoutes = [
 ];
 
 const failures = [];
+const finalPiano = FURNITURE.find((item) => item.label === '피아노');
+const livingDining = FURNITURE.find(
+  (item) => item.label === '식탁' && item.x < 600,
+);
+if (!finalPiano || finalPiano.x !== 206 || finalPiano.y !== 72 || finalPiano.w !== 48 || finalPiano.h !== 124)
+  failures.push('최종 거실 피아노 배치가 저장된 배치도와 다름');
+if (!livingDining || livingDining.x !== 279 || livingDining.y !== 211 || livingDining.w !== 265 || livingDining.h !== 50)
+  failures.push('최종 거실 식탁 배치가 저장된 배치도와 다름');
 for (const passage of PASSAGES) {
   const span = Math.max(passage.w, passage.h);
   const minimum = passage.label === '욕실 문' ? 96 : MIN_COMFORTABLE_PASSAGE;

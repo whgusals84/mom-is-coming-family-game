@@ -1,6 +1,5 @@
 import {
   DOORS,
-  EDITABLE_LIVING_TABLE,
   FURNITURE,
   LANDMARKS,
   PASSAGES,
@@ -8,17 +7,7 @@ import {
   ROOMS,
   WALLS,
 } from './data';
-import {
-  getFurniturePlanDefinition,
-  getFurniturePlanFootprint,
-  getFurniturePlanResizeHandle,
-} from './furniture-plan';
-import type {
-  CharacterRole,
-  FurniturePlanMarker,
-  MomMood,
-  Point,
-} from './types';
+import type { CharacterRole, MomMood, Point } from './types';
 import { SpriteBank } from './sprites';
 
 const COLORS: Record<string, string> = {
@@ -45,10 +34,7 @@ export function roundedRect(
   ctx.roundRect(x, y, w, h, r);
 }
 
-export function drawMap(
-  ctx: CanvasRenderingContext2D,
-  options: { hideEditableLivingTable?: boolean } = {},
-) {
+export function drawMap(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = '#e9c58e';
   ctx.fillRect(0, 0, 1600, 1000);
   for (const room of ROOMS) {
@@ -84,10 +70,7 @@ export function drawMap(
     );
   }
 
-  for (const item of FURNITURE) {
-    if (options.hideEditableLivingTable && item === EDITABLE_LIVING_TABLE) continue;
-    drawFurniture(ctx, item);
-  }
+  for (const item of FURNITURE) drawFurniture(ctx, item);
   for (const door of DOORS)
     drawDoor(
       ctx,
@@ -101,84 +84,6 @@ export function drawMap(
   drawDoorMat(ctx, LANDMARKS.entrance.x, LANDMARKS.entrance.y + 28);
 }
 
-export function drawFurniturePlanMarkers(
-  ctx: CanvasRenderingContext2D,
-  markers: readonly FurniturePlanMarker[],
-  selectedId: string | null = null,
-) {
-  for (const [index, marker] of markers.entries()) {
-    const definition = getFurniturePlanDefinition(marker.kind);
-    const footprint = getFurniturePlanFootprint(marker);
-    ctx.save();
-    ctx.translate(marker.x, marker.y);
-    ctx.rotate((marker.rotation * Math.PI) / 180);
-    if (marker.id === selectedId) {
-      roundedRect(ctx, -marker.w / 2 - 6, -marker.h / 2 - 6, marker.w + 12, marker.h + 12, 16);
-      ctx.strokeStyle = '#ffd84d';
-      ctx.lineWidth = 9;
-      ctx.stroke();
-    }
-    roundedRect(ctx, -marker.w / 2, -marker.h / 2, marker.w, marker.h, 13);
-    ctx.globalAlpha = 0.82;
-    ctx.fillStyle = definition.color;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#6d36a8';
-    ctx.lineWidth = 5;
-    ctx.setLineDash([13, 8]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#fff';
-    ctx.globalAlpha = 0.95;
-    ctx.font = `1000 ${Math.max(24, Math.min(52, marker.w * .46, marker.h * .62))}px system-ui`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(definition.icon, 0, 2);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#4b2674';
-    ctx.font = '1000 16px system-ui';
-    ctx.fillText('▲', 0, -marker.h / 2 + 13);
-    ctx.restore();
-
-    if (marker.id === selectedId) {
-      const handle = getFurniturePlanResizeHandle(marker);
-      ctx.save();
-      roundedRect(ctx, handle.x - 14, handle.y - 14, 28, 28, 7);
-      ctx.fillStyle = '#fffdf4';
-      ctx.fill();
-      ctx.strokeStyle = '#4b2674';
-      ctx.lineWidth = 4;
-      ctx.stroke();
-      ctx.fillStyle = '#4b2674';
-      ctx.font = '1000 18px system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('↘', handle.x, handle.y + 1);
-      ctx.restore();
-    }
-
-    const caption = `${index + 1}. ${definition.icon} ${marker.label}`;
-    ctx.save();
-    ctx.font = '900 15px system-ui';
-    const captionWidth = Math.min(220, Math.max(92, ctx.measureText(caption).width + 22));
-    const above = marker.y - footprint.h / 2 > 38;
-    const captionY = above
-      ? marker.y - footprint.h / 2 - 34
-      : marker.y + footprint.h / 2 + 10;
-    roundedRect(ctx, marker.x - captionWidth / 2, captionY, captionWidth, 28, 10);
-    ctx.fillStyle = marker.id === selectedId ? '#fff0a8' : '#fffdf4';
-    ctx.fill();
-    ctx.strokeStyle = '#4b2674';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.fillStyle = '#3d2d45';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(caption, marker.x, captionY + 14, captionWidth - 12);
-    ctx.restore();
-  }
-}
-
 function drawFurniture(
   ctx: CanvasRenderingContext2D,
   item: (typeof FURNITURE)[number],
@@ -187,6 +92,7 @@ function drawFurniture(
     sofa: ['#ea806b', '#a9453f'],
     tv: ['#444853', '#25272d'],
     table: ['#b47d4d', '#7d4f31'],
+    piano: ['#8761bd', '#583389'],
     plant: ['#79aa67', '#b85b4b'],
     fridge: ['#e9f3f2', '#96aaa9'],
     dining: ['#d39a5f', '#8f5c35'],
@@ -225,6 +131,23 @@ function drawFurniture(
     ctx.moveTo(item.x + item.w / 2, item.y + 8);
     ctx.lineTo(item.x + item.w / 2, item.y + item.h - 8);
     ctx.stroke();
+  } else if (item.kind === 'piano') {
+    ctx.fillStyle = '#4d2b75';
+    roundedRect(ctx, item.x + 7, item.y + 8, item.w - 14, item.h * 0.34, 7);
+    ctx.fill();
+    const keyboardY = item.y + item.h * 0.55;
+    ctx.fillStyle = '#fffaf0';
+    roundedRect(ctx, item.x + 6, keyboardY, item.w - 12, item.h * 0.32, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#5a3c6f';
+    ctx.lineWidth = 1.5;
+    for (let key = 1; key < 6; key += 1) {
+      const keyX = item.x + 6 + ((item.w - 12) * key) / 6;
+      ctx.beginPath();
+      ctx.moveTo(keyX, keyboardY);
+      ctx.lineTo(keyX, keyboardY + item.h * 0.32);
+      ctx.stroke();
+    }
   } else if (item.kind === 'fridge') {
     ctx.fillStyle = edge;
     ctx.fillRect(item.x + item.w - 22, item.y + 18, 6, item.h - 36);

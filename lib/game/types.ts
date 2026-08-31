@@ -4,33 +4,6 @@ export type Rect = { x: number; y: number; w: number; h: number; label?: string;
 export type CharacterRole = 'player' | 'mom' | 'brother' | 'dad';
 export type MomMood = 'calm' | 'suspicious' | 'chase' | 'search' | 'extreme';
 
-export type FurniturePlanKind =
-  | 'sofa'
-  | 'tv'
-  | 'table'
-  | 'plant'
-  | 'cabinet'
-  | 'bed'
-  | 'desk'
-  | 'dollShelf'
-  | 'dining'
-  | 'counter'
-  | 'fridge'
-  | 'toilet'
-  | 'sink'
-  | 'closet'
-  | 'tub'
-  | 'other';
-export type FurniturePlanRotation = 0 | 90 | 180 | 270;
-export type FurniturePlanMarker = Point & {
-  id: string;
-  kind: FurniturePlanKind;
-  label: string;
-  w: number;
-  h: number;
-  rotation: FurniturePlanRotation;
-};
-
 export type Interaction = {
   id: string;
   x: number;
