@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {
   clampFurniturePlanMarker,
   createFurniturePlanMarker,
+  EDITABLE_LIVING_TABLE_PLAN_ID,
+  ensureEditableLivingTableMarker,
   furniturePlanWorldToScreen,
   getFurniturePlanFootprint,
   getFurniturePlanResizeHandle,
@@ -33,6 +35,12 @@ const resizedAgain = setFurniturePlanFootprintSize(resized, 'height', 80);
 assert.deepEqual(getFurniturePlanFootprint(resizedAgain), { w: 220, h: 80 }, '지도 기준 세로 크기를 조절해야 합니다.');
 assert.deepEqual(getFurniturePlanFootprint(setFurniturePlanFootprintSize(marker, 'width', 999)), { w: 320, h: 170 });
 assert.deepEqual(getFurniturePlanFootprint(setFurniturePlanFootprintSize(marker, 'height', 1)), { w: 110, h: 28 });
+
+const withOriginalTable = ensureEditableLivingTableMarker([marker], { x: 445, y: 350, w: 90, h: 60 });
+assert.equal(withOriginalTable[0].id, EDITABLE_LIVING_TABLE_PLAN_ID);
+assert.deepEqual(getFurniturePlanFootprint(withOriginalTable[0]), { w: 90, h: 60 });
+assert.deepEqual({ x: withOriginalTable[0].x, y: withOriginalTable[0].y }, { x: 490, y: 380 });
+assert.equal(ensureEditableLivingTableMarker(withOriginalTable, { x: 0, y: 0, w: 1, h: 1 }).length, 2);
 
 const resizeHandle = getFurniturePlanResizeHandle(rotated);
 assert.equal(pointHitsFurniturePlanResizeHandle(resizeHandle, rotated), true);

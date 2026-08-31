@@ -14,15 +14,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
-import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
+import { EDITABLE_LIVING_TABLE, INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
 import {
   FURNITURE_PLAN_CATALOG,
   FURNITURE_PLAN_STORAGE_KEY,
+  EDITABLE_LIVING_TABLE_PLAN_ID,
   MAX_FURNITURE_PLAN_SIZE,
   MAX_FURNITURE_PLAN_MARKERS,
   MIN_FURNITURE_PLAN_SIZE,
   clampFurniturePlanMarker,
   createFurniturePlanMarker,
+  ensureEditableLivingTableMarker,
   getFurniturePlanDefinition,
   getFurniturePlanFootprint,
   pointHitsFurniturePlanResizeHandle,
@@ -141,14 +143,23 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     if (furniturePlanLoadedRef.current || typeof window === 'undefined') return;
     furniturePlanLoadedRef.current = true;
     try {
-      const loaded = parseFurniturePlan(localStorage.getItem(FURNITURE_PLAN_STORAGE_KEY));
+      const loaded = ensureEditableLivingTableMarker(
+        parseFurniturePlan(localStorage.getItem(FURNITURE_PLAN_STORAGE_KEY)),
+        EDITABLE_LIVING_TABLE,
+      );
       furniturePlanMarkersRef.current = loaded;
       setFurniturePlanMarkers(loaded);
+      localStorage.setItem(FURNITURE_PLAN_STORAGE_KEY, serializeFurniturePlan(loaded));
     } catch {
       furniturePlanMarkersRef.current = [];
       setFurniturePlanStatus('이 기기에서는 자동 저장을 사용할 수 없지만 표시는 계속할 수 있어요.');
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(ensureFurniturePlanLoaded, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const commitFurniturePlan = (next: FurniturePlanMarker[], status?: string) => {
     const prepared = next
@@ -366,6 +377,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const deleteSelectedFurniturePlanMarker = () => {
     const id = selectedFurniturePlanMarkerRef.current;
     if (!id) return;
+    if (id === EDITABLE_LIVING_TABLE_PLAN_ID) {
+      setFurniturePlanStatus('기존 테이블은 삭제하지 않고 위치와 크기만 바꿀 수 있어요.');
+      return;
+    }
     const marker = furniturePlanMarkersRef.current.find((item) => item.id === id);
     commitFurniturePlan(
       furniturePlanMarkersRef.current.filter((item) => item.id !== id),
@@ -405,7 +420,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     exportContext.fillText(`보라색 점선 ${furniturePlanMarkersRef.current.length}개 · 번호와 화살표 방향을 확인해 주세요`, 27, 62);
     exportContext.save();
     exportContext.translate(0, 84);
-    drawMap(exportContext);
+    drawMap(exportContext, { hideEditableLivingTable: true });
     drawFurniturePlanMarkers(exportContext, furniturePlanMarkersRef.current);
     exportContext.restore();
     const blob = await new Promise<Blob | null>((resolve) => exportCanvas.toBlob(resolve, 'image/png'));
@@ -830,8 +845,12 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       furniturePlanCameraRef.current = { cameraX, cameraY, zoom, shakeX, shakeY };
       ctx.setTransform(resize.dpr, 0, 0, resize.dpr, 0, 0); ctx.clearRect(0, 0, resize.width, resize.height);
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
-      drawMap(ctx);
-      if (!isChase && furniturePlanModeRef.current) {
+      drawMap(ctx, {
+        hideEditableLivingTable: !isChase && furniturePlanMarkersRef.current.some(
+          (marker) => marker.id === EDITABLE_LIVING_TABLE_PLAN_ID,
+        ),
+      });
+      if (!isChase && furniturePlanMarkersRef.current.length) {
         drawFurniturePlanMarkers(ctx, furniturePlanMarkersRef.current, selectedFurniturePlanMarkerRef.current);
       }
 
@@ -950,6 +969,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
   const selectedFurniturePlanFootprint = selectedFurniturePlanMarker
     ? getFurniturePlanFootprint(selectedFurniturePlanMarker)
     : null;
+  const selectedFurniturePlanMarkerIsOriginalTable =
+    selectedFurniturePlanMarker?.id === EDITABLE_LIVING_TABLE_PLAN_ID;
   const activeFurniturePlanDefinition = getFurniturePlanDefinition(furniturePlanTool);
 
   return (
@@ -1040,7 +1061,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                   value={selectedFurniturePlanMarker?.label ?? ''}
                   maxLength={24}
                   placeholder="지도에 표시할 이름"
-                  disabled={!selectedFurniturePlanMarker}
+                  disabled={!selectedFurniturePlanMarker || selectedFurniturePlanMarkerIsOriginalTable}
                   onChange={(event) => updateSelectedFurniturePlanLabel(event.target.value)}
                   onBlur={restoreSelectedFurniturePlanLabel}
                 />
@@ -1084,7 +1105,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                   <Button variant="secondary" onClick={rotateSelectedFurniturePlanMarker} disabled={!selectedFurniturePlanMarker}>
                     <RotateCw /> 90° 회전
                   </Button>
-                  <Button variant="destructive" onClick={deleteSelectedFurniturePlanMarker} disabled={!selectedFurniturePlanMarker}>
+                  <Button variant="destructive" onClick={deleteSelectedFurniturePlanMarker} disabled={!selectedFurniturePlanMarker || selectedFurniturePlanMarkerIsOriginalTable}>
                     <Trash2 /> 선택 삭제
                   </Button>
                 </div>

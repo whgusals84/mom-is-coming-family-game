@@ -1,5 +1,6 @@
 import {
   DOORS,
+  EDITABLE_LIVING_TABLE,
   FURNITURE,
   LANDMARKS,
   PASSAGES,
@@ -44,7 +45,10 @@ export function roundedRect(
   ctx.roundRect(x, y, w, h, r);
 }
 
-export function drawMap(ctx: CanvasRenderingContext2D) {
+export function drawMap(
+  ctx: CanvasRenderingContext2D,
+  options: { hideEditableLivingTable?: boolean } = {},
+) {
   ctx.fillStyle = '#e9c58e';
   ctx.fillRect(0, 0, 1600, 1000);
   for (const room of ROOMS) {
@@ -80,7 +84,10 @@ export function drawMap(ctx: CanvasRenderingContext2D) {
     );
   }
 
-  for (const item of FURNITURE) drawFurniture(ctx, item);
+  for (const item of FURNITURE) {
+    if (options.hideEditableLivingTable && item === EDITABLE_LIVING_TABLE) continue;
+    drawFurniture(ctx, item);
+  }
   for (const door of DOORS)
     drawDoor(
       ctx,

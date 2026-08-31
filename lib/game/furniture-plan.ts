@@ -11,6 +11,7 @@ export const FURNITURE_PLAN_MAP_REVISION = 'wide-doors-v11';
 export const MAX_FURNITURE_PLAN_MARKERS = 100;
 export const MIN_FURNITURE_PLAN_SIZE = 28;
 export const MAX_FURNITURE_PLAN_SIZE = 320;
+export const EDITABLE_LIVING_TABLE_PLAN_ID = 'original-living-table';
 
 export const FURNITURE_PLAN_CATALOG: ReadonlyArray<{
   kind: FurniturePlanKind;
@@ -93,6 +94,26 @@ export function createFurniturePlanMarker(
     h: definition.h,
     rotation: 0,
   });
+}
+
+export function ensureEditableLivingTableMarker(
+  items: readonly FurniturePlanMarker[],
+  table: { x: number; y: number; w: number; h: number },
+) {
+  if (items.some((item) => item.id === EDITABLE_LIVING_TABLE_PLAN_ID)) return [...items];
+  return [
+    {
+      id: EDITABLE_LIVING_TABLE_PLAN_ID,
+      kind: 'table' as const,
+      label: '기존 테이블',
+      x: table.x + table.w / 2,
+      y: table.y + table.h / 2,
+      w: table.w,
+      h: table.h,
+      rotation: 0 as const,
+    },
+    ...items,
+  ];
 }
 
 export function pointHitsFurniturePlanMarker(
