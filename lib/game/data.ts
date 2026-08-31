@@ -45,9 +45,10 @@ export const WALLS: Rect[] = [
   { x: 535, y: 676, w: 25, h: 24 },
   // 아빠 방과 중앙 복도
   { x: 716, y: 676, w: 24, h: 324 },
-  // 내 방 윗벽: 사용자가 서서 바라본 위치에 작은 120px 방문을 둔다.
-  { x: 856, y: 626, w: 74, h: 24 },
-  { x: 1050, y: 626, w: 354, h: 24 },
+  // 내 방 윗벽: 욕조 옆에 보이는 벽의 왼쪽 끝에 작은 120px 방문을 둔다.
+  // 욕실과 맞닿은 세로 벽은 아래까지 이어져 두 공간을 직접 연결하지 않는다.
+  { x: 856, y: 626, w: 24, h: 24 },
+  { x: 1000, y: 626, w: 404, h: 24 },
   { x: 856, y: 626, w: 24, h: 374 },
   // 중앙 아래 욕실
   { x: 716, y: 696, w: 12, h: 24 },
@@ -62,7 +63,7 @@ export const DOORS = [
   { x: 568, y: 580, angle: Math.PI, label: '욕실 문', span: 78 },
   { x: 405, y: 688, angle: Math.PI / 2, label: '욕실 문', span: 82 },
   { x: 560, y: 688, angle: Math.PI / 2, label: '아빠 방 문', span: 86 },
-  { x: 930, y: 638, angle: Math.PI / 2, label: '내 방 문', span: 78 },
+  { x: 880, y: 638, angle: Math.PI / 2, label: '내 방 문', span: 78 },
   { x: 728, y: 708, angle: Math.PI / 2, label: '욕실 문', span: 82 },
 ] as const;
 
@@ -112,7 +113,7 @@ export const PASSAGES: Rect[] = [
   { x: 556, y: 580, w: 24, h: 96, label: '욕실 문', kind: 'passage' },
   { x: 405, y: 676, w: 130, h: 24, label: '욕실 · 아빠 방', kind: 'passage' },
   { x: 560, y: 676, w: 156, h: 24, label: '복도 · 아빠 방', kind: 'passage' },
-  { x: 930, y: 626, w: 120, h: 24, label: '내 방 문', kind: 'passage' },
+  { x: 880, y: 626, w: 120, h: 24, label: '내 방 문', kind: 'passage' },
   { x: 728, y: 696, w: 120, h: 24, label: '중앙 욕실 문', kind: 'passage' },
 ];
 
@@ -211,7 +212,7 @@ export const FURNITURE: Rect[] = [
   { x: 930, y: 790, w: 125, h: 58, label: '책상', kind: 'desk' },
   { x: 940, y: 865, w: 72, h: 82, label: '옷장', kind: 'closet' },
   // 중앙 욕실
-  { x: 752, y: 820, w: 90, h: 62, label: '욕조', kind: 'tub' },
+  { x: 762, y: 826, w: 70, h: 50, label: '욕조', kind: 'tub' },
   // 발코니 소품
   { x: 64, y: 194, w: 58, h: 46, label: '화분대', kind: 'plant' },
   { x: 1504, y: 476, w: 40, h: 54, label: '화분대', kind: 'plant' },

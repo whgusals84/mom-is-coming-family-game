@@ -267,6 +267,10 @@ const livingTv = FURNITURE.find((item) => item.kind === 'tv');
 const livingPlant = FURNITURE.find((item) => item.kind === 'plant' && item.x < 600);
 const turtleHome = FURNITURE.find((item) => item.kind === 'turtleHabitat');
 const balconyWasher = FURNITURE.find((item) => item.kind === 'washer');
+const centralTub = FURNITURE.find((item) => item.kind === 'tub');
+const bathroomRoomDivider = SOLIDS.find(
+  (item) => item.x === 856 && item.y <= 700 && item.y + item.h >= 916 && item.w === 24,
+);
 const restingFurniture = [
   { role: '엄마', point: FAMILY_RESTING_POSITIONS.mom, furniture: FURNITURE.find((item) => item.kind === 'sofa') },
   { role: '형', point: FAMILY_RESTING_POSITIONS.brother, furniture: FURNITURE.find((item) => item.label === '형 침대') },
@@ -299,6 +303,10 @@ if (!livingTv || !turtleHome || turtleHome.x + turtleHome.w >= livingTv.x)
   failures.push('두 마리 거북이 집이 TV 왼쪽의 기존 화분 자리에 배치되지 않음');
 if (!balconyWasher || balconyWasher.x !== 1505 || balconyWasher.y !== 840 || balconyWasher.w !== 58 || balconyWasher.h !== 66)
   failures.push('세탁기가 사용자가 지정한 오른쪽 발코니 위치와 다름');
+if (!centralTub || centralTub.x !== 762 || centralTub.y !== 826 || centralTub.w !== 70 || centralTub.h !== 50)
+  failures.push('중앙 욕실의 작은 욕조 배치가 지정된 크기와 다름');
+if (!bathroomRoomDivider)
+  failures.push('중앙 욕실과 내 방 사이 벽이 열려 직접 연결됨');
 if (balconyWasher) {
   const balconyPassageWidth = balconyWasher.x - 1404;
   if (balconyPassageWidth < 96)
