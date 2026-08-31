@@ -131,6 +131,10 @@ function drawFurniture(
     ctx.moveTo(item.x + item.w / 2, item.y + 8);
     ctx.lineTo(item.x + item.w / 2, item.y + item.h - 8);
     ctx.stroke();
+    ctx.fillStyle = '#fff7bf';
+    ctx.font = '900 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('올라가면 SPEED UP!', item.x + item.w / 2, item.y + item.h - 12);
   } else if (item.kind === 'piano') {
     ctx.fillStyle = '#4d2b75';
     roundedRect(ctx, item.x + 7, item.y + 8, item.w - 14, item.h * 0.34, 7);

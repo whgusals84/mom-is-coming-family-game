@@ -116,9 +116,18 @@ export const PASSAGES: Rect[] = [
   { x: 728, y: 696, w: 140, h: 24, label: '중앙 욕실 문', kind: 'passage' },
 ];
 
+export const LIVING_SOFA: Rect = {
+  x: 310,
+  y: 50,
+  w: 225,
+  h: 82,
+  label: '소파',
+  kind: 'sofa',
+};
+
 export const FURNITURE: Rect[] = [
   // 거실
-  { x: 290, y: 50, w: 225, h: 82, label: '소파', kind: 'sofa' },
+  LIVING_SOFA,
   { x: 325, y: 495, w: 120, h: 55, label: 'TV', kind: 'tv' },
   // 사용자가 최종 배치한 거실 피아노와 긴 식탁.
   { x: 206, y: 72, w: 48, h: 124, label: '피아노', kind: 'piano' },

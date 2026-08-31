@@ -257,11 +257,18 @@ const escapeRoutes = [
 
 const failures = [];
 const finalPiano = FURNITURE.find((item) => item.label === '피아노');
+const livingSofa = FURNITURE.find((item) => item.kind === 'sofa');
 const livingDining = FURNITURE.find(
   (item) => item.label === '식탁' && item.x < 600,
 );
 if (!finalPiano || finalPiano.x !== 206 || finalPiano.y !== 72 || finalPiano.w !== 48 || finalPiano.h !== 124)
   failures.push('최종 거실 피아노 배치가 저장된 배치도와 다름');
+if (!livingSofa || livingSofa.x !== 310 || livingSofa.y !== 50 || livingSofa.w !== 225 || livingSofa.h !== 82)
+  failures.push('거실 소파 위치가 넓힌 통로 배치와 다름');
+if (finalPiano && livingSofa) {
+  const passageWidth = livingSofa.x - (finalPiano.x + finalPiano.w);
+  if (passageWidth < 50) failures.push(`피아노와 소파 사이 통로가 ${passageWidth}px라 너무 좁음`);
+}
 if (!livingDining || livingDining.x !== 279 || livingDining.y !== 211 || livingDining.w !== 265 || livingDining.h !== 50)
   failures.push('최종 거실 식탁 배치가 저장된 배치도와 다름');
 for (const passage of PASSAGES) {

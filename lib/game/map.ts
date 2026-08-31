@@ -20,17 +20,34 @@ export function isBlocked(x: number, y: number, radius: number) {
   return SOLIDS.some((rect) => circleHitsRect(x, y, radius, rect));
 }
 
-export function moveCircle(entity: Point, dx: number, dy: number, radius: number) {
+type MoveOptions = {
+  ignoreKinds?: readonly string[];
+};
+
+function isBlockedForMove(x: number, y: number, radius: number, options: MoveOptions) {
+  if (x - radius < 0 || y - radius < 0 || x + radius > WORLD.width || y + radius > WORLD.height) return true;
+  return SOLIDS.some((rect) => {
+    if (rect.kind && options.ignoreKinds?.includes(rect.kind)) return false;
+    return circleHitsRect(x, y, radius, rect);
+  });
+}
+
+export function moveCircle(entity: Point, dx: number, dy: number, radius: number, options: MoveOptions = {}) {
   const nextX = entity.x + dx;
-  const blockedX = dx !== 0 && isBlocked(nextX, entity.y, radius);
+  const blockedX = dx !== 0 && isBlockedForMove(nextX, entity.y, radius, options);
   if (!blockedX) entity.x = nextX;
   const nextY = entity.y + dy;
-  const blockedY = dy !== 0 && isBlocked(entity.x, nextY, radius);
+  const blockedY = dy !== 0 && isBlockedForMove(entity.x, nextY, radius, options);
   if (!blockedY) entity.y = nextY;
   return {
     moved: (dx !== 0 && !blockedX) || (dy !== 0 && !blockedY),
     blocked: blockedX || blockedY,
   };
+}
+
+export function pointInRect(point: Point, rect: Rect, inset = 0) {
+  return point.x >= rect.x + inset && point.x <= rect.x + rect.w - inset
+    && point.y >= rect.y + inset && point.y <= rect.y + rect.h - inset;
 }
 
 // 좁은 문에서도 엄마의 원형 충돌 범위를 정확히 반영하도록 세밀한 격자를 쓴다.

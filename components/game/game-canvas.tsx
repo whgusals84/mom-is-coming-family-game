@@ -13,9 +13,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { playGameTone, unlockGameAudio, type GameTone } from '@/lib/game/audio';
-import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
+import { INTERACTION_TEMPLATES, ITEMS, LANDMARKS, LINES, LIVING_SOFA, MISSIONS, NPC_SPOTS, WORLD } from '@/lib/game/data';
 import { HEALTH_RULES, restoreHealth, takeDamage } from '@/lib/game/health';
-import { clamp, distance, findPath, moveCircle } from '@/lib/game/map';
+import { clamp, distance, findPath, moveCircle, pointInRect } from '@/lib/game/map';
 import { drawCharacter, drawMap, drawMarker, drawSpeech, roundedRect } from '@/lib/game/renderer';
 import { SpriteBank } from '@/lib/game/sprites';
 import type { GameResult, HudState, Interaction, Mission, MomMood, Point } from '@/lib/game/types';
@@ -40,6 +40,9 @@ type Bubble = { role: 'player' | 'mom' | 'brother' | 'dad'; text: string; until:
 type Effect = Point & { text: string; color: string; until: number; born: number };
 type Counters = { snacks: number; brotherMess: number; closeCall: number; dad: number };
 type TouchControl = 'left' | 'right' | 'up' | 'down' | 'dash' | 'interact';
+
+const PLAYER_MOVE_OPTIONS = { ignoreKinds: ['sofa'] } as const;
+const SOFA_SPEED_MULTIPLIER = 1.38;
 
 const INITIAL_HUD: HudState = {
   score: 0, elapsed: 0, rage: 0, rageLabel: '아직 모름', momMood: 'calm', momMoodLabel: '😐 평온',
@@ -139,6 +142,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let shakePower = 0;
     let blockedHintUntil = 0;
     let nextBumpEffect = 0;
+    let playerOnSofa = false;
     let npc: Npc | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
@@ -280,7 +284,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       if (length < .001) { vx = player.facing; vy = 0; length = 1; }
       const step = 8;
       for (let moved = 0; moved < HEALTH_RULES.knockbackDistance; moved += step) {
-        moveCircle(player, vx / length * step, vy / length * step, player.r);
+        moveCircle(player, vx / length * step, vy / length * step, player.r, PLAYER_MOVE_OPTIONS);
       }
       alertText = `앗! 체력 ${Math.floor(health)}/${HEALTH_RULES.max}`; alertUntil = now + 1.5;
       itemText = `💔 체력 -${HEALTH_RULES.hitDamage} · 남은 체력 ${Math.floor(health)}/${HEALTH_RULES.max} · 잠깐 무적!`; itemTextUntil = now + 3;
@@ -374,9 +378,11 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         if (dx < -.1) player.facing = -1;
         else if (dx > .1) player.facing = 1;
         player.moving = false;
-        const speed = player.dashUntil > now ? 470 : (player.speedUntil > now ? 275 : 205);
+        const sofaBoostAtFrameStart = pointInRect(player, LIVING_SOFA);
+        const baseSpeed = player.dashUntil > now ? 470 : (player.speedUntil > now ? 275 : 205);
+        const speed = baseSpeed * (sofaBoostAtFrameStart ? SOFA_SPEED_MULTIPLIER : 1);
         if (player.hiddenUntil <= now) {
-          const movement = moveCircle(player, dx * speed * dt, dy * speed * dt, player.r);
+          const movement = moveCircle(player, dx * speed * dt, dy * speed * dt, player.r, PLAYER_MOVE_OPTIONS);
           player.moving = wantsMove && movement.moved;
           if (wantsMove && movement.blocked && !movement.moved && now >= nextBumpEffect) {
             nextBumpEffect = now + .75;
@@ -384,6 +390,13 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
             addEffect(player.x + dx * 25, player.y + dy * 25, '툭!', '#6d5142', now, .55);
           }
         }
+        const nowOnSofa = pointInRect(player, LIVING_SOFA);
+        if (nowOnSofa && !playerOnSofa) {
+          itemText = '🛋️ 소파 위 스피드 UP!'; itemTextUntil = now + 2.2;
+          addEffect(player.x, player.y - 18, 'SPEED UP!', '#45b9a8', now, 1.15);
+          beep('nice');
+        }
+        playerOnSofa = nowOnSofa;
 
         if (isChase && mom.active) {
           if (now > mom.nextLoseCheck) {
@@ -484,6 +497,19 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
         ctx.save(); ctx.globalAlpha = .55 + Math.sin(now * 16) * .18; ctx.strokeStyle = '#fff06a'; ctx.lineWidth = 6;
         ctx.beginPath(); ctx.arc(player.x, player.y - 8, 34, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
       }
+      if (playerOnSofa && player.moving && !reducedMotion) {
+        ctx.save();
+        ctx.strokeStyle = '#fff6a8'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        const trailDirection = player.facing > 0 ? -1 : 1;
+        for (let trail = 0; trail < 3; trail += 1) {
+          const trailY = player.y - 21 + trail * 13;
+          ctx.beginPath();
+          ctx.moveTo(player.x + trailDirection * (26 + trail * 5), trailY);
+          ctx.lineTo(player.x + trailDirection * (48 + trail * 7), trailY);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       const hitFlash = !reducedMotion && player.invulnerableUntil > now && Math.floor(now * 10) % 2 === 0;
       drawCharacter(ctx, bank, 'player', player.x, player.y, player.moving, now, 'calm', player.hiddenUntil > now || hitFlash, player.facing, reducedMotion);
       for (const effect of effects) {
@@ -519,6 +545,8 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
           momMoodLabel: mom.active ? moodLabel(mom.mood) : '😐 아직 안 옴', mission: { ...mission },
           prompt: blockedHintUntil > now
             ? '🚧 갈색 벽과 테두리 가구는 통과할 수 없어요'
+            : playerOnSofa
+              ? '🛋️ 소파 위 스피드 UP! 엄마는 소파를 돌아와요'
             : isChase
               ? (nearby ? `E · ${nearby.label}` : (npc?.kind === 'dad' && !npc.collected ? '아빠에게 가까이 가세요!' : '집 안의 반짝이는 장난거리를 찾아보세요'))
               : '집을 자유롭게 둘러보세요 · 민트색 문턱은 통과할 수 있어요',
