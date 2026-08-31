@@ -127,13 +127,19 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     reducedMotionQuery.addEventListener('change', onReducedMotionChange);
 
     const bank = new SpriteBank();
-    // 집과 가구는 움직이지 않으므로 한 번만 그려 둔다. 모바일에서 매 프레임
-    // 수백 개의 선·그림자·가구를 다시 그리는 비용을 없앤다.
+    // 집과 가구는 2배 해상도로 한 번만 그린다. 매 프레임 벡터를 다시
+    // 그리지 않으면서 확대 화면에서도 벽과 글자가 또렷하게 유지된다.
+    const staticMapScale = 2;
     const staticMap = document.createElement('canvas');
-    staticMap.width = WORLD.width;
-    staticMap.height = WORLD.height;
+    staticMap.width = WORLD.width * staticMapScale;
+    staticMap.height = WORLD.height * staticMapScale;
     const staticMapContext = staticMap.getContext('2d');
-    if (staticMapContext) drawMap(staticMapContext, 0, false);
+    if (staticMapContext) {
+      staticMapContext.setTransform(staticMapScale, 0, 0, staticMapScale, 0, 0);
+      staticMapContext.imageSmoothingEnabled = true;
+      staticMapContext.imageSmoothingQuality = 'high';
+      drawMap(staticMapContext, 0, false);
+    }
     const keys = new Set<string>();
     let pausedDuration = 0;
     let pausedRealAt = 0;
@@ -190,7 +196,10 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
     let nearbyRestingRole: 'mom' | 'brother' | 'dad' | null = null;
     let bubbles: Bubble[] = [];
     let effects: Effect[] = [];
-    let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: 1 };
+    let resize = { width: stage.clientWidth, height: stage.clientHeight, dpr: 1, desiredDpr: 1, minDpr: 1 };
+    let qualitySampleAt = bootAt;
+    let qualityFrames = 0;
+    let fastQualitySamples = 0;
     const beep = (kind: GameTone) => playGameTone(kind, soundRef.current);
 
     const addBubble = (role: Bubble['role'], text: string, now: number, duration = 2.4) => {
@@ -379,20 +388,52 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
       addBubble('player', '아직 안 끝났어!', now); beep('hurt');
     };
 
+    const applyCanvasDpr = (nextDpr: number) => {
+      resize.dpr = nextDpr;
+      canvas.width = Math.floor(resize.width * resize.dpr);
+      canvas.height = Math.floor(resize.height * resize.dpr);
+      canvas.style.width = `${resize.width}px`;
+      canvas.style.height = `${resize.height}px`;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+    };
     const resizeCanvas = () => {
       const box = stage.getBoundingClientRect();
       const width = Math.max(1, box.width);
       const height = Math.max(1, box.height);
       const mobile = width <= 980 || window.matchMedia('(pointer: coarse)').matches;
-      // Phones can afford a crisp 2x canvas after the static-map optimization. Large
-      // tablets are capped by a pixel budget so image quality does not bring back lag.
-      const mobilePixelBudgetDpr = Math.sqrt(2_200_000 / (width * height));
-      const maxDpr = mobile ? Math.max(1.35, Math.min(2, mobilePixelBudgetDpr)) : 2;
-      resize = { width, height, dpr: Math.min(devicePixelRatio || 1, maxDpr) };
-      canvas.width = Math.floor(resize.width * resize.dpr); canvas.height = Math.floor(resize.height * resize.dpr);
-      canvas.style.width = `${resize.width}px`; canvas.style.height = `${resize.height}px`;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      // Phones target 2.5x and standard PC monitors use mild supersampling. The pixel
+      // budget prevents a large tablet or 4K monitor from allocating an oversized canvas.
+      const pixelBudget = mobile ? 3_000_000 : 5_500_000;
+      const budgetDpr = Math.sqrt(pixelBudget / (width * height));
+      const preferredDpr = mobile
+        ? Math.max(devicePixelRatio || 1, 2.25)
+        : Math.max(devicePixelRatio || 1, 1.5);
+      const desiredDpr = Math.max(1, Math.min(2.5, preferredDpr, budgetDpr));
+      const minDpr = Math.min(desiredDpr, mobile ? 1.5 : 1.25);
+      resize = { width, height, dpr: desiredDpr, desiredDpr, minDpr };
+      applyCanvasDpr(desiredDpr);
+      qualitySampleAt = clock(); qualityFrames = 0; fastQualitySamples = 0;
+    };
+    const adaptRenderQuality = (now: number) => {
+      qualityFrames += 1;
+      const sampleSeconds = now - qualitySampleAt;
+      if (sampleSeconds < 1.5) return;
+      const fps = qualityFrames / sampleSeconds;
+      if (fps < 49 && resize.dpr > resize.minDpr + .01) {
+        applyCanvasDpr(Math.max(resize.minDpr, resize.dpr - .25));
+        fastQualitySamples = 0;
+      } else if (fps > 57 && resize.dpr < resize.desiredDpr - .01) {
+        fastQualitySamples += 1;
+        if (fastQualitySamples >= 2) {
+          applyCanvasDpr(Math.min(resize.desiredDpr, resize.dpr + .125));
+          fastQualitySamples = 0;
+        }
+      } else {
+        fastQualitySamples = 0;
+      }
+      qualitySampleAt = now;
+      qualityFrames = 0;
     };
     const observer = new ResizeObserver(resizeCanvas); observer.observe(stage); resizeCanvas();
     window.visualViewport?.addEventListener('resize', resizeCanvas);
@@ -605,13 +646,16 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
 
       const zoom = clamp(Math.min(resize.width / 930, resize.height / 620), .62, 1.18);
       const viewW = resize.width / zoom; const viewH = resize.height / zoom;
-      const cameraX = clamp(player.x - viewW / 2, 0, Math.max(0, WORLD.width - viewW));
-      const cameraY = clamp(player.y - viewH / 2, 0, Math.max(0, WORLD.height - viewH));
+      const rawCameraX = clamp(player.x - viewW / 2, 0, Math.max(0, WORLD.width - viewW));
+      const rawCameraY = clamp(player.y - viewH / 2, 0, Math.max(0, WORLD.height - viewH));
+      const cameraPixelScale = zoom * resize.dpr;
+      const cameraX = Math.round(rawCameraX * cameraPixelScale) / cameraPixelScale;
+      const cameraY = Math.round(rawCameraY * cameraPixelScale) / cameraPixelScale;
       const shakeX = shakeUntil > now ? (Math.random() - .5) * shakePower : 0;
       const shakeY = shakeUntil > now ? (Math.random() - .5) * shakePower : 0;
       ctx.setTransform(resize.dpr, 0, 0, resize.dpr, 0, 0); ctx.clearRect(0, 0, resize.width, resize.height);
       ctx.save(); ctx.translate(shakeX, shakeY); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
-      if (staticMapContext) ctx.drawImage(staticMap, 0, 0);
+      if (staticMapContext) ctx.drawImage(staticMap, 0, 0, WORLD.width, WORLD.height);
       else drawMap(ctx, 0, false);
       drawMapAnimations(ctx, now);
 
@@ -724,6 +768,7 @@ export function GameCanvas({ highScore, initialPhase, onGameOver, onOpenHow, onO
                 : '엄마와 거리를 벌리면 회복',
         });
       }
+      adaptRenderQuality(now);
       animation = requestAnimationFrame(frame);
     };
     animation = requestAnimationFrame(frame);
