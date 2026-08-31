@@ -10,6 +10,7 @@
     "build": "vinext build",
     "check:health": "node --experimental-strip-types scripts/validate-health.mjs",
     "check:map": "node --experimental-strip-types scripts/validate-map.mjs",
+    "check:layout": "node --experimental-strip-types scripts/validate-furniture-plan.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",
     "format": "oxfmt"

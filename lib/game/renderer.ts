@@ -7,7 +7,16 @@ import {
   ROOMS,
   WALLS,
 } from './data';
-import type { CharacterRole, MomMood, Point } from './types';
+import {
+  getFurniturePlanDefinition,
+  getFurniturePlanFootprint,
+} from './furniture-plan';
+import type {
+  CharacterRole,
+  FurniturePlanMarker,
+  MomMood,
+  Point,
+} from './types';
 import { SpriteBank } from './sprites';
 
 const COLORS: Record<string, string> = {
@@ -82,6 +91,62 @@ export function drawMap(ctx: CanvasRenderingContext2D) {
     );
   for (const plush of PLUSHIES) drawPlush(ctx, plush);
   drawDoorMat(ctx, LANDMARKS.entrance.x, LANDMARKS.entrance.y + 28);
+}
+
+export function drawFurniturePlanMarkers(
+  ctx: CanvasRenderingContext2D,
+  markers: readonly FurniturePlanMarker[],
+  selectedId: string | null = null,
+) {
+  for (const [index, marker] of markers.entries()) {
+    const definition = getFurniturePlanDefinition(marker.kind);
+    const footprint = getFurniturePlanFootprint(marker);
+    ctx.save();
+    ctx.translate(marker.x, marker.y);
+    ctx.rotate((marker.rotation * Math.PI) / 180);
+    if (marker.id === selectedId) {
+      roundedRect(ctx, -marker.w / 2 - 6, -marker.h / 2 - 6, marker.w + 12, marker.h + 12, 16);
+      ctx.strokeStyle = '#ffd84d';
+      ctx.lineWidth = 9;
+      ctx.stroke();
+    }
+    roundedRect(ctx, -marker.w / 2, -marker.h / 2, marker.w, marker.h, 13);
+    ctx.globalAlpha = 0.52;
+    ctx.fillStyle = definition.color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#6d36a8';
+    ctx.lineWidth = 5;
+    ctx.setLineDash([13, 8]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4b2674';
+    ctx.font = '1000 30px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('↑', 0, 2);
+    ctx.restore();
+
+    const caption = `${index + 1}. ${definition.icon} ${marker.label}`;
+    ctx.save();
+    ctx.font = '900 15px system-ui';
+    const captionWidth = Math.min(220, Math.max(92, ctx.measureText(caption).width + 22));
+    const above = marker.y - footprint.h / 2 > 38;
+    const captionY = above
+      ? marker.y - footprint.h / 2 - 34
+      : marker.y + footprint.h / 2 + 10;
+    roundedRect(ctx, marker.x - captionWidth / 2, captionY, captionWidth, 28, 10);
+    ctx.fillStyle = marker.id === selectedId ? '#fff0a8' : '#fffdf4';
+    ctx.fill();
+    ctx.strokeStyle = '#4b2674';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = '#3d2d45';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(caption, marker.x, captionY + 14, captionWidth - 12);
+    ctx.restore();
+  }
 }
 
 function drawFurniture(
